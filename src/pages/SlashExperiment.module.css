@@ -1,0 +1,113 @@
+/* Slash / Experiment hero — light lab look, dark type over the droplet field. */
+
+.hero {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  min-height: 560px;
+  overflow: hidden;
+  background: var(--se-bg, #f0f0f0); /* fallback while WebGL boots / if absent */
+  color: #111;
+  /* the droplet canvas is decorative; keep every text layer above it */
+}
+
+.content {
+  /* NO z-index here: a stacking context would isolate the text's
+     mix-blend-mode from the canvas below. DOM order (content after canvas,
+     both positioned) already paints the text on top. */
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0 24px;
+  /* let pointer tracking pass through; re-enable on interactive children */
+  pointer-events: none;
+}
+
+.content :is(a, button) {
+  pointer-events: auto;
+}
+
+.kicker {
+  position: absolute;
+  top: clamp(24px, 7vh, 64px);
+  left: 0;
+  right: 0;
+  font-family: var(--se-font-mono, ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, monospace);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.title {
+  /* Grotesque display stack; swap for the project display font if wanted:
+     font-family: 'BeerMoney', ... */
+  font-family: var(--se-font-display, "Helvetica Neue", Inter, Helvetica, Arial, sans-serif);
+  font-size: clamp(44px, 8.5vw, 128px);
+  font-weight: 500;
+  line-height: 0.98;
+  letter-spacing: -0.015em;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+.label {
+  position: absolute;
+  bottom: 26px;
+  font-family: var(--se-font-mono, ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, monospace);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.labelLeft {
+  left: 28px;
+}
+
+.labelRight {
+  right: 28px;
+}
+
+/* Keep the type readable when a dark drop parks behind it: white text in
+   difference mode renders ~#0F0F0F on the light background (same look as
+   the plain #111) and flips to light grey over the dark drops. */
+@supports (mix-blend-mode: difference) {
+  .kicker,
+  .title,
+  .label {
+    color: #fff;
+    mix-blend-mode: difference;
+  }
+}
+
+/* Optional single yellow accent (§2) — off by default.
+.kicker::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f5e000;
+  margin-right: 10px;
+  vertical-align: middle;
+}
+*/
+
+@media (max-width: 640px) {
+  .label {
+    bottom: 18px;
+  }
+
+  .labelLeft {
+    left: 16px;
+  }
+
+  .labelRight {
+    right: 16px;
+  }
+}

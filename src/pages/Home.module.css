@@ -1,0 +1,101 @@
+.page {
+  --bg: #050505;
+  --fg: #f2f2f2;
+  --fg-muted: #9c9c9c;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono",
+    Menlo, Consolas, monospace;
+
+  position: relative;
+  min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+  background-color: var(--bg);
+  color: var(--fg);
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  /* solo orizzontale: non crea uno scroll container, quindi lo sticky
+     della sezione about continua a funzionare */
+  overflow-x: clip;
+  color-scheme: dark;
+}
+
+.page ::selection {
+  background: #f2f2f2;
+  color: #050505;
+}
+
+/* hero: 100vh, scorre via normalmente; il clip contiene lettere e pill.
+   svh (non dvh): l'altezza NON cambia quando le barre del browser mobile
+   collassano durante lo scroll — niente salti di layout */
+.hero {
+  position: relative;
+  height: 100vh;
+  height: 100svh;
+  overflow: clip;
+}
+
+/* canvas WebGL a tutto schermo dietro l'overlay dell'hero */
+.scene {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  opacity: 0;
+}
+
+.sceneRevealed {
+  opacity: 1;
+  transition: opacity 1.1s ease 0.1s;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: flex-end;
+  padding: clamp(1.5rem, 4vw, 3rem);
+  pointer-events: none;
+}
+
+/* titolo in basso a sinistra, come nel riferimento; niente transform sul
+   reveal: falserebbe la misura delle lettere di InteractiveText */
+.title {
+  margin: 0;
+  max-width: 14ch;
+  font-size: clamp(1.75rem, 4.2vw, 3.9rem);
+  font-weight: 500;
+  line-height: 1.12;
+  letter-spacing: 0.005em;
+  text-transform: uppercase;
+  user-select: none;
+  opacity: 0;
+}
+
+.titleRevealed {
+  opacity: 1;
+  transition: opacity 1s ease 0.35s;
+}
+
+/* mobile: titolo più contenuto in basso a sinistra — i modelli (in colonna
+   zigzag, spostati verso l'alto) restano liberi dal testo */
+@media (max-width: 767px) {
+  .title {
+    max-width: 12ch;
+    font-size: clamp(1.4rem, 6.5vw, 1.9rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sceneRevealed,
+  .titleRevealed {
+    transition: none;
+  }
+}

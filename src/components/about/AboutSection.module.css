@@ -1,0 +1,124 @@
+/* wrapper alto: lo scroll attraverso questa altezza guida la timeline.
+   Più alto = stessa rotazione su più scroll = giri più lenti (taratura:
+   420vh più veloce, 540vh più lento) */
+.wrapper {
+  position: relative;
+  height: 480vh;
+  background: var(--bg, #050505);
+}
+
+/* con reduced-motion niente scrollytelling: sezione singola statica */
+.wrapperStatic {
+  height: 100vh;
+  height: 100svh;
+}
+
+/* svh: altezza stabile durante lo scroll (vedi .hero in Home.module.css) */
+.sticky {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  height: 100svh;
+  overflow: clip;
+}
+
+.canvas {
+  position: absolute;
+  inset: 0;
+}
+
+/* colonna testo: il centraggio sta QUI, la y animata sta sul div interno.
+   Più larga e più lontana dal bordo destro: si estende verso il centro */
+.textCol {
+  position: absolute;
+  right: 12vw;
+  top: 50%;
+  transform: translateY(-50%);
+  width: min(44ch, 40vw);
+  z-index: 10;
+  pointer-events: none;
+}
+
+.text h2 {
+  margin: 0 0 1.4rem;
+  font-size: clamp(2.6rem, 5vw, 5rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  color: var(--fg, #f2f2f2);
+}
+
+.text p {
+  margin: 0;
+  font-size: clamp(1.15rem, 1.5vw, 1.45rem);
+  line-height: 1.65;
+  color: var(--fg-muted, #9c9c9c);
+  opacity: 0.95;
+}
+
+/* impilato (modello sopra, testo sotto): telefoni e tablet in portrait —
+   in landscape resta l'affiancato (compattato dalla query più sotto).
+   Il ramo (hover: none) copre i tablet ≥1024px in portrait (iPad Pro).
+   Stessa query di `narrow` in AboutSection.tsx: tenerle allineate */
+@media (orientation: portrait) and (max-width: 1032px),
+  (orientation: portrait) and (hover: none) {
+  /* sezione più corta: stessi giri, meno scroll col pollice */
+  .wrapper {
+    height: 340vh;
+  }
+
+  .wrapperStatic {
+    height: 100vh;
+    height: 100svh;
+  }
+
+  /* testo a larghezza piena in basso (niente left:50% + width auto: da
+     absolute andrebbe in shrink-to-fit contro la mezza viewport destra) */
+  .textCol {
+    left: 0;
+    right: 0;
+    top: auto;
+    bottom: 4vh;
+    bottom: 4dvh;
+    width: auto;
+    max-width: none;
+    transform: none;
+    padding: 0 6vw;
+    text-align: center;
+  }
+
+  .text {
+    margin: 0 auto;
+    max-width: 60ch;
+  }
+
+  .text h2 {
+    margin-bottom: 0.9rem;
+    font-size: clamp(1.7rem, 7vw, 2.6rem);
+  }
+
+  .text p {
+    font-size: clamp(0.95rem, 3.8vw, 1.1rem);
+    line-height: 1.5;
+  }
+}
+
+/* telefoni in landscape (viewport bassa): colonna affiancata più larga e
+   tipografia compatta, così il blocco sta nei ~390px di altezza.
+   (hover: none): una finestra desktop bassa col mouse NON deve cambiare */
+@media (orientation: landscape) and (max-height: 500px) and (hover: none) {
+  .textCol {
+    right: 5vw;
+    width: min(52ch, 46vw);
+  }
+
+  .text h2 {
+    margin-bottom: 0.6rem;
+    font-size: clamp(1.4rem, 4vh, 1.9rem);
+  }
+
+  .text p {
+    font-size: clamp(0.85rem, 3.4vh, 1rem);
+    line-height: 1.45;
+  }
+}

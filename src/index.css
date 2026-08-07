@@ -18,14 +18,26 @@
   padding: 0;
 }
 
+/* overflow-x: clip (non hidden) — non crea uno scroll container, quindi
+   position: sticky nelle sezioni scrollytelling continua a funzionare */
+html {
+  background-color: #0a0a0a;
+  overflow-x: clip;
+  max-width: 100%;
+}
+
 body {
   font-family: 'BeerMoney', system-ui, -apple-system, sans-serif;
   background-color: var(--color-primary);
   background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
   color: var(--color-white);
+  /* dvh: su mobile le barre del browser fanno "saltare" 100vh */
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
+  overflow-x: clip;
+  max-width: 100%;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -33,6 +45,42 @@ body {
 #root {
   width: 100%;
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
+}
+
+/* Cursore "invert" (solo home, oltre l'hero — vedi InvertCursor.tsx):
+   cerchio trasparente che inverte i colori del backdrop, canvas compresi. */
+.invert-cursor {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 110px;
+  height: 110px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 9999; /* sopra tutto: Loader è 1000, TopBar 50 */
+  opacity: 0; /* nascosto finché non si supera l'hero */
+  transition:
+    opacity 0.25s ease,
+    width 0.2s ease,
+    height 0.2s ease;
+  will-change: transform;
+  /* niente doppione -webkit- a mano: con i cssTarget in vite.config è il
+     minifier ad aggiungere il prefisso SENZA scartare la proprietà standard
+     (Chrome/Brave ignorano l'alias -webkit-backdrop-filter) */
+  backdrop-filter: invert(1);
+}
+
+/* feedback sugli elementi interattivi */
+.invert-cursor--grow {
+  width: 150px;
+  height: 150px;
+}
+
+/* nasconde il cursore nativo quando l'effetto è attivo */
+body.invert-cursor-active,
+body.invert-cursor-active * {
+  cursor: none;
 }

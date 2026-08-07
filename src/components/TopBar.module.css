@@ -1,0 +1,290 @@
+.topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: clamp(1rem, 2.5vw, 1.6rem) clamp(1.25rem, 4vw, 2.5rem);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  background: transparent;
+  opacity: 0;
+  visibility: hidden; /* toglie i link dal tab order finché è invisibile */
+  pointer-events: none;
+}
+
+.revealed {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.8s ease 0.25s;
+}
+
+.topbar a,
+.topbar button {
+  pointer-events: auto;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: clamp(1.25rem, 3vw, 2.5rem);
+}
+
+.navLink {
+  color: var(--fg-muted);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 0.3s ease;
+}
+
+.navLink:hover,
+.navLink:focus-visible {
+  color: var(--fg);
+}
+
+.logo {
+  color: var(--fg);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  text-decoration: none;
+}
+
+.dot {
+  color: #ffd91f;
+}
+
+.right {
+  display: flex;
+  align-items: center;
+  gap: clamp(0.75rem, 2vw, 1.25rem);
+}
+
+.lang {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+}
+
+.lang a {
+  color: var(--fg);
+  text-decoration: none;
+  transition: opacity 0.3s ease;
+}
+
+.active {
+  opacity: 1;
+}
+
+/* 0.55 su #f2f2f2/#050505 ≈ 5.5:1 di contrasto: sopra il minimo AA (4.5) */
+.idle {
+  opacity: 0.55;
+}
+
+.idle:hover,
+.idle:focus-visible {
+  opacity: 0.85;
+}
+
+.sep {
+  opacity: 0.25;
+}
+
+/* ---- hamburger (solo sotto 861px) ---- */
+
+.burger {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  /* touch target ≥ 44×44 */
+  width: 44px;
+  height: 44px;
+  margin: -8px -8px -8px 0; /* compensa l'area extra: visivamente compatto */
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  color: var(--fg);
+}
+
+.burgerBox {
+  position: relative;
+  display: block;
+  width: 22px;
+  height: 14px;
+}
+
+.burgerBox i {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  border-radius: 1px;
+  background: currentColor;
+  transition:
+    transform 0.25s ease,
+    opacity 0.2s ease;
+}
+
+.burgerBox i:nth-child(1) {
+  top: 0;
+}
+.burgerBox i:nth-child(2) {
+  top: 6px;
+}
+.burgerBox i:nth-child(3) {
+  top: 12px;
+}
+
+/* aperto: le tre linee diventano una X */
+.burgerOpen .burgerBox i:nth-child(1) {
+  transform: translateY(6px) rotate(45deg);
+}
+.burgerOpen .burgerBox i:nth-child(2) {
+  opacity: 0;
+}
+.burgerOpen .burgerBox i:nth-child(3) {
+  transform: translateY(-6px) rotate(-45deg);
+}
+
+/* ---- overlay menu mobile ---- */
+
+/* z-index negativo: resta DENTRO lo stacking context dell'header (fixed +
+   z-index 50) quindi copre tutta la pagina, ma logo / lingua / hamburger
+   dipinti sopra restano visibili e cliccabili */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* niente justify-content: center — se il contenuto supera l'altezza
+     (telefono in landscape) taglierebbe sopra E sotto senza scroll; i
+     margin auto su nav/lang centrano quando c'è spazio e degradano bene */
+  justify-content: flex-start;
+  gap: clamp(1.25rem, 8vh, 5rem);
+  padding: 24px 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: rgba(5, 5, 5, 0.97);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 0.3s ease,
+    visibility 0.3s ease;
+}
+
+.overlayOpen {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.overlayNav {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: auto; /* con margin-bottom: auto di .overlayLang: centraggio */
+}
+
+.overlayLang {
+  margin-bottom: auto;
+}
+
+.overlayLink {
+  padding: 0.55em 1em; /* tap target abbondante */
+  color: var(--fg);
+  font-size: clamp(1.3rem, 6vw, 2rem);
+  letter-spacing: 0.14em;
+  text-decoration: none;
+  text-align: center;
+}
+
+.overlayLink:hover,
+.overlayLink:focus-visible {
+  color: #ffd91f;
+}
+
+/* switch lingua ripetuto in grande dentro l'overlay */
+.overlayLang .lang {
+  font-size: 1rem;
+}
+
+.overlayLang .lang a {
+  padding: 0.6em 0.8em; /* tap target ≥44px */
+}
+
+.topbar :is(a, button):focus-visible {
+  outline: 2px solid #ffd91f;
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+@media (max-width: 860px) {
+  .nav {
+    display: none;
+  }
+
+  .burger {
+    display: flex;
+  }
+}
+
+/* telefono in landscape: menu compatto, tutto visibile senza scroll
+   (tap target comunque ≥44px: riga ~21px + 2×12px di padding) */
+@media (max-height: 500px) {
+  .overlay {
+    gap: 1rem;
+  }
+
+  .overlayNav {
+    gap: 0;
+  }
+
+  .overlayLink {
+    padding: 12px 1em;
+    font-size: clamp(1.05rem, 4.5vh, 1.4rem);
+  }
+
+  .overlayLang .lang a {
+    padding: 12px 16px;
+  }
+}
+
+/* su touch i link della barra guadagnano area di tap ≥44px senza cambiare
+   il layout visivo (la riga di testo mono 0.68rem è ~13px: 13+2×16=45) */
+@media (hover: none) {
+  .navLink {
+    padding: 16px 8px;
+    margin: -16px -8px;
+  }
+
+  .lang a {
+    padding: 16px 8px;
+    margin: -16px -8px;
+  }
+
+  .overlayLang .lang a {
+    padding: 14px 16px; /* riga ~19px a 1rem: 19+28 = 47px ≥ 44 */
+    margin: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .revealed,
+  .overlay,
+  .burgerBox i {
+    transition: none;
+  }
+}
