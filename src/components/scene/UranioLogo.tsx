@@ -4,6 +4,8 @@ import { useThree } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import { chromeMaterial, ensureUVs } from "./chromeMaterial";
+import { buildPieceMask } from "./pieceMask";
+import type { PieceMask } from "./pieceMask";
 import { useLetterPhysics } from "./useLetterPhysics";
 import type { LetterPiece } from "./useLetterPhysics";
 import type { PointerState } from "./useWindowPointer";
@@ -34,12 +36,18 @@ const PIECES: { id: string; nodes: string[] }[] = [
 // fa sì che su desktop il fit calcolato sia ~1
 const LOGO_BASE = 6.0;
 
+// lato della cella della maschera di silhouette, in unità del logo normalizzato
+// (LOGO_BASE = 6): ~0.02 → griglie di 100-300 celle per lato, sagome fedeli
+// anche sui buchi stretti di R/A/O e sul manico dell'emblema
+const MASK_CELL = 0.02;
+
 interface Piece {
   id: string;
   holder: THREE.Object3D; // mesh(es) centrate sul baricentro del pezzo
   restPos: [number, number, number]; // baricentro nel logo assemblato+centrato
   sizeFactor: number;
   boundR: number;
+  mask: PieceMask;
 }
 
 
@@ -136,6 +144,16 @@ export default function UranioLogo({
         // taglia usata per scalare l'impulso: lettere ~0.9, emblema clampato
         sizeFactor: Math.min(1.3, Math.max(0.5, r)),
         boundR: r,
+        // sagoma rasterizzata per il test di contatto col cursore: la
+        // bounding sphere da sola è inservibile (l'emblema è una L, il suo
+        // cerchio contiene soprattutto vuoto) e un raycast su queste mesh
+        // costa troppo (~1.4ms/raggio). Vedi pieceMask.ts.
+        mask: buildPieceMask(
+          present.map((n) => geos[n]),
+          c,
+          pieceBox,
+          MASK_CELL,
+        ),
       });
     }
 
@@ -168,6 +186,7 @@ export default function UranioLogo({
         restPos: p.restPos,
         sizeFactor: p.sizeFactor,
         boundR: p.boundR,
+        mask: p.mask,
       })),
     [pieces],
   );

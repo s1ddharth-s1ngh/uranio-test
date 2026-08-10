@@ -2,23 +2,31 @@ import { useRef } from "react";
 import type { RefObject } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+import { maskHit } from "./pieceMask";
+import type { PieceMask } from "./pieceMask";
 import type { PointerState } from "./useWindowPointer";
 
 export const KICK_CONFIG = {
-  // --- impulso ---
-  strength: 6,
-  maxStrength: 26,
-  // soglia sulla velocità FILTRATA del puntatore (unità NDC/s): sotto questa
-  // il passaggio del mouse non calcia (evita micro-scatti da jitter)
-  minPointerSpeed: 0.25,
-  // costante di tempo (s) del filtro sulla velocità del puntatore: smorza i
-  // picchi di un singolo frame, così un tocco piccolo resta un tocco piccolo
-  velSmoothing: 0.05,
+  // --- impulso all'ingresso del cursore sul pezzo ---
+  strength: 7,
+  maxStrength: 30,
+  // --- spinta CONTINUA finché il cursore resta a contatto e si muove: è
+  // questa a dare la sensazione di SPINGERE la lettera, invece di un unico
+  // calcio secco all'ingresso ---
+  dragStrength: 26,
+  // soglia sulla velocità filtrata del cursore (NDC/s): sotto questa il
+  // contatto non calcia (evita scatti dal jitter del mouse fermo)
+  minPointerSpeed: 0.1,
+  // costante di tempo (s) del filtro sulla velocità: smorza i picchi di un
+  // singolo frame senza rendere sordo un tocco breve (a 0.05 un gesto di 2-3
+  // frame veniva sottostimato e non muoveva niente). A tenere calmo il moto
+  // ci pensano i tetti qui sotto, non il filtro.
+  velSmoothing: 0.025,
   mass: 3.0,
-  inertia: 3.2,
+  inertia: 3.4,
   // tetti invalicabili: per quanto violenta sia la sciabolata, il pezzo non
   // parte mai in orbita né fa capriole
-  maxLinearSpeed: 2.6,
+  maxLinearSpeed: 2.8,
   maxAngularSpeed: 2.2,
   maxOffset: 1.0,
   // molla di richiamo: ω = √k ≈ 5.3 rad/s, ζ = c / 2√k ≈ 0.61
@@ -27,10 +35,15 @@ export const KICK_CONFIG = {
   c: 6.5,
   damping: 4.2,
   restoreTorque: 9,
-  // campionamento del tratto percorso dal puntatore tra due frame: impedisce
-  // che un movimento veloce "buchi" il pezzo senza colpirlo
-  maxSamples: 5,
-  sampleStep: 0.08,
+  // raggio del "pennello" attorno al cursore, in px: si può SFIORARE il bordo
+  // di una lettera senza doverla centrare al pixel. Tarato contro il raycast
+  // sulla mesh: a 8px i mancati contatti sono ~0.2% e la tolleranza extra
+  // ~3.6% dello schermo (il vecchio test a bounding sphere ne sbagliava il 30%)
+  brushPx: 8,
+  // campionamento del tratto percorso dal cursore tra due frame: impedisce che
+  // un movimento veloce "buchi" il pezzo senza toccarlo
+  maxSamples: 6,
+  sampleStep: 0.05,
 };
 
 export interface LetterPiece {
@@ -38,6 +51,7 @@ export interface LetterPiece {
   restPos: [number, number, number];
   sizeFactor: number;
   boundR: number;
+  mask: PieceMask;
 }
 
 interface LetterState {
@@ -47,7 +61,11 @@ interface LetterState {
   quaternion: THREE.Quaternion;
   velocity: THREE.Vector3;
   angularVelocity: THREE.Vector3;
-  wasInside: boolean;
+  // true dal momento in cui QUESTO contatto ha già ricevuto l'impulso pieno.
+  // Non è "toccato al frame prima": se il cursore appoggia sulla lettera da
+  // fermo e solo dopo parte, l'impulso d'ingresso deve arrivare allora, non
+  // andare perso perché il primo frame di contatto aveva velocità nulla.
+  kicked: boolean;
 }
 
 interface UseLetterPhysicsArgs {
@@ -65,31 +83,31 @@ export function useLetterPhysics({
   reduceMotion,
   ambient,
 }: UseLetterPhysicsArgs) {
-  const states = useRef<LetterState[]>([]);
-  if (states.current.length === 0) {
-    states.current = pieces.map((p) => ({
-      origin: new THREE.Vector3(...p.restPos),
-      originQuat: new THREE.Quaternion(),
-      position: new THREE.Vector3(...p.restPos),
-      quaternion: new THREE.Quaternion(),
-      velocity: new THREE.Vector3(),
-      angularVelocity: new THREE.Vector3(),
-      wasInside: false,
-    }));
-  }
+  // stato per pezzo: mutabile e vivo per tutta la vita del componente, quindi
+  // in un ref. Viene popolato al primo giro DENTRO useFrame: leggere o scrivere
+  // un ref durante il render è vietato (react-hooks/refs), e uno useMemo
+  // sarebbe un valore immutabile che la fisica non potrebbe mutare.
+  const statesRef = useRef<LetterState[] | null>(null);
 
-  const raycaster = useRef(new THREE.Raycaster());
+  const ray = useRef(new THREE.Ray());
   const prevNdc = useRef(new THREE.Vector2());
   const hasPrev = useRef(false);
-  // velocità del puntatore filtrata (EMA), in NDC/s con x corretta per l'aspect
+  // velocità del cursore filtrata (EMA), in NDC/s con x corretta per l'aspect
   const pointerVel = useRef(new THREE.Vector2());
-  // pezzi sotto al puntatore in QUESTO frame + punto di impatto sulla mesh
+  // pezzi toccati in QUESTO frame + punto di contatto (mondo)
   const frameHit = useRef<boolean[]>(pieces.map(() => false));
   const hitPoints = useRef<THREE.Vector3[]>(pieces.map(() => new THREE.Vector3()));
+  // matrice inversa del gruppo, aggiornata una volta a frame
+  const invMat = useRef<THREE.Matrix4[]>(pieces.map(() => new THREE.Matrix4()));
+  const worldScales = useRef<number[]>(pieces.map(() => 1));
 
-  // temporanei riusati: il loop gira a 60fps su 7 pezzi, niente allocazioni
+  // temporanei riusati: il loop gira a 60fps, niente allocazioni per frame
   const tmpV2 = useRef(new THREE.Vector2());
-  const tmpNdc = useRef(new THREE.Vector2());
+  const tmpNdc = useRef(new THREE.Vector3());
+  const tmpOrigin = useRef(new THREE.Vector3());
+  const tmpLocalO = useRef(new THREE.Vector3());
+  const tmpLocalD = useRef(new THREE.Vector3());
+  const tmpLocalHit = useRef(new THREE.Vector3());
   const tmpCenter = useRef(new THREE.Vector3());
   const tmpArm = useRef(new THREE.Vector3());
   const tmpForce = useRef(new THREE.Vector3());
@@ -101,16 +119,34 @@ export function useLetterPhysics({
   const tmpSpin = useRef(new THREE.Quaternion());
 
   useFrame((state, delta) => {
-    const dt = Math.min(delta, 1 / 30);
+    // NB: `delta` può essere 0 (primo frame di r3f, o due frame nello stesso
+    // ms). Senza questo pavimento le divisioni per dt danno 0/0 = NaN e la
+    // media mobile della velocità resterebbe NaN PER SEMPRE → mai più un calcio.
+    const dt = Math.min(Math.max(delta, 1 / 240), 1 / 30);
     const gs = groups.current;
     if (!gs) return;
+
+    if (!statesRef.current) {
+      statesRef.current = pieces.map((piece) => ({
+        origin: new THREE.Vector3(...piece.restPos),
+        originQuat: new THREE.Quaternion(),
+        position: new THREE.Vector3(...piece.restPos),
+        quaternion: new THREE.Quaternion(),
+        velocity: new THREE.Vector3(),
+        angularVelocity: new THREE.Vector3(),
+        kicked: false,
+      }));
+    }
+    const states = statesRef.current;
 
     const p = pointer.current;
     // reduce-motion o touch: nessun input, i pezzi vanno solo a riposo
     const canKick = p.active && !reduceMotion && !ambient;
-    const aspect = state.size.width / state.size.height;
+    const vw = state.size.width;
+    const vh = state.size.height;
+    const aspect = vw > 0 && vh > 0 ? vw / vh : 1;
 
-    // ---- velocità del puntatore ------------------------------------------
+    // ---- velocità del cursore (filtrata) ---------------------------------
     let dx = 0;
     let dy = 0;
     if (canKick && hasPrev.current) {
@@ -119,28 +155,56 @@ export function useLetterPhysics({
     }
     const alpha = 1 - Math.exp(-dt / KICK_CONFIG.velSmoothing);
     pointerVel.current.lerp(tmpV2.current.set(dx / dt, dy / dt), alpha);
-    const speed = pointerVel.current.length();
+    let speed = pointerVel.current.length();
+    // cintura di sicurezza: un NaN nella EMA non si ripulirebbe mai da solo
+    if (!Number.isFinite(speed)) {
+      pointerVel.current.set(0, 0);
+      speed = 0;
+    }
 
-    // ---- chi sta davvero sotto al puntatore -------------------------------
-    // Raycast sulla GEOMETRIA reale (non sulla bounding sphere): l'emblema è
-    // una forma a L, la sua sfera copriva mezzo schermo di vuoto. Si campiona
-    // il segmento prev→ora così un movimento veloce non lo scavalca.
-    const pathLen = Math.hypot(dx, dy);
-    if (!canKick) {
-      for (let i = 0; i < frameHit.current.length; i++) frameHit.current[i] = false;
-    } else if (pathLen > 1e-5 || !hasPrev.current) {
-      for (let i = 0; i < frameHit.current.length; i++) frameHit.current[i] = false;
-      const samples = Math.min(
-        KICK_CONFIG.maxSamples,
-        Math.max(1, Math.ceil(pathLen / KICK_CONFIG.sampleStep)),
-      );
+    // ---- contatto cursore ↔ sagoma ---------------------------------------
+    // Per ogni pezzo: si porta il raggio del cursore nello spazio LOCALE del
+    // gruppo, lo si interseca con la faccia frontale e si legge la maschera di
+    // silhouette — O(1).
+    // Niente bounding sphere (l'emblema è una L: il suo cerchio è quasi tutto
+    // vuoto — era il motivo per cui si muoveva col cursore lontano) e niente
+    // raycast sulle mesh (~1.4ms per raggio su 26k triangoli: troppo).
+    for (let i = 0; i < frameHit.current.length; i++) frameHit.current[i] = false;
+
+    if (canKick) {
+      for (let i = 0; i < gs.length; i++) {
+        const g = gs[i];
+        if (!g) continue;
+        invMat.current[i].copy(g.matrixWorld).invert();
+        worldScales.current[i] = g.getWorldScale(tmpScale.current).x || 1;
+      }
+
+      // il pennello, convertito da px a unità NDC-con-aspect
+      const brushNdc =
+        (2 * KICK_CONFIG.brushPx * aspect) / Math.max(vw, 1);
+
+      const pathLen = Math.hypot(dx, dy);
+      const samples = hasPrev.current
+        ? Math.min(
+            KICK_CONFIG.maxSamples,
+            Math.max(1, Math.ceil(pathLen / KICK_CONFIG.sampleStep)),
+          )
+        : 1;
+
+      tmpOrigin.current.setFromMatrixPosition(state.camera.matrixWorld);
+
       for (let s = 1; s <= samples; s++) {
         const t = hasPrev.current ? s / samples : 1;
-        tmpNdc.current.set(
-          prevNdc.current.x + (p.x - prevNdc.current.x) * t,
-          prevNdc.current.y + (p.y - prevNdc.current.y) * t,
-        );
-        raycaster.current.setFromCamera(tmpNdc.current, state.camera);
+        const nx = prevNdc.current.x + (p.x - prevNdc.current.x) * t;
+        const ny = prevNdc.current.y + (p.y - prevNdc.current.y) * t;
+
+        // raggio dalla camera attraverso il punto NDC
+        tmpNdc.current.set(nx, ny, 0.5).unproject(state.camera);
+        ray.current.origin.copy(tmpOrigin.current);
+        ray.current.direction
+          .copy(tmpNdc.current)
+          .sub(tmpOrigin.current)
+          .normalize();
 
         // solo il pezzo PIÙ VICINO alla camera prende il colpo: niente calci
         // attraverso una lettera che sta davanti
@@ -149,46 +213,90 @@ export function useLetterPhysics({
         for (let i = 0; i < gs.length; i++) {
           const g = gs[i];
           if (!g) continue;
-          const hit = raycaster.current.intersectObject(g, true)[0];
-          if (hit && hit.distance < bestDist) {
-            bestDist = hit.distance;
+
+          const mask = pieces[i].mask;
+          tmpLocalO.current.copy(ray.current.origin).applyMatrix4(invMat.current[i]);
+          tmpLocalD.current
+            .copy(ray.current.direction)
+            .transformDirection(invMat.current[i]);
+          // intersezione con la faccia FRONTALE del pezzo (non col piano
+          // mediano: i pezzi sono spessi ~0.69 e bombati, e sul mediano il
+          // punto di contatto scivolava fuori sagoma vicino ai bordi)
+          if (Math.abs(tmpLocalD.current.z) < 1e-6) continue;
+          const tHit = (mask.zFront - tmpLocalO.current.z) / tmpLocalD.current.z;
+          if (tHit <= 0) continue;
+          tmpLocalHit.current
+            .copy(tmpLocalD.current)
+            .multiplyScalar(tHit)
+            .add(tmpLocalO.current);
+
+          // il pennello è in NDC: qui serve in unità locali. La conversione
+          // esatta dipende dalla profondità; la scala del gruppo e il fattore
+          // di proiezione a z≈0 sono costanti nel frame, quindi basta il
+          // rapporto tra il mezzo-lato visibile e 1 in NDC.
+          const halfH =
+            Math.tan(
+              ((state.camera as THREE.PerspectiveCamera).fov * Math.PI) / 360,
+            ) * Math.abs(state.camera.position.z);
+          const brushLocal =
+            (brushNdc * halfH) / worldScales.current[i];
+
+          if (
+            !maskHit(
+              mask,
+              tmpLocalHit.current.x,
+              tmpLocalHit.current.y,
+              brushLocal,
+            )
+          ) {
+            continue;
+          }
+
+          // distanza reale del punto di contatto dalla camera
+          const dist = tHit * worldScales.current[i];
+          if (dist < bestDist) {
+            bestDist = dist;
             bestIdx = i;
-            hitPoints.current[i].copy(hit.point);
+            hitPoints.current[i]
+              .copy(tmpLocalHit.current)
+              .applyMatrix4(gs[i]!.matrixWorld);
           }
         }
         if (bestIdx >= 0) frameHit.current[bestIdx] = true;
       }
     }
-    // puntatore fermo sopra un pezzo: frameHit resta com'era → nessun calcio
-    // ripetuto finché non esce e rientra
 
-    for (let i = 0; i < states.current.length; i++) {
-      const s = states.current[i];
+    for (let i = 0; i < states.length; i++) {
+      const s = states[i];
       const g = gs[i];
       if (!g) continue;
 
+      const piece = pieces[i];
       const isInside = frameHit.current[i];
 
-      // il calcio scatta solo sul FRONTE d'ingresso: mesh toccata ora, non
-      // toccata al frame prima, e con abbastanza velocità
-      if (isInside && !s.wasInside && speed > KICK_CONFIG.minPointerSpeed) {
-        const piece = pieces[i];
+      if (!isInside) s.kicked = false;
+
+      if (isInside && speed > KICK_CONFIG.minPointerSpeed) {
+        // impulso pieno alla PRIMA spinta di questo contatto; finché il cursore
+        // resta appoggiato e si muove, continua a spingere in modo progressivo
+        const gain = s.kicked
+          ? KICK_CONFIG.dragStrength * dt
+          : KICK_CONFIG.strength;
 
         tmpForce.current
           .set(pointerVel.current.x, pointerVel.current.y, 0)
-          .multiplyScalar(KICK_CONFIG.strength * piece.sizeFactor);
+          .multiplyScalar(gain * piece.sizeFactor);
         if (tmpForce.current.length() > KICK_CONFIG.maxStrength) {
           tmpForce.current.setLength(KICK_CONFIG.maxStrength);
         }
 
-        // braccio: dal baricentro al punto REALE di impatto, riportato nelle
+        // braccio: dal baricentro al punto REALE di contatto, riportato nelle
         // unità locali del gruppo (il logo è scalato dal fit-to-view)
-        const worldScale = g.getWorldScale(tmpScale.current).x || 1;
         tmpCenter.current.setFromMatrixPosition(g.matrixWorld);
         tmpArm.current
           .copy(hitPoints.current[i])
           .sub(tmpCenter.current)
-          .divideScalar(worldScale);
+          .divideScalar(worldScales.current[i] || 1);
 
         tmpTorque.current
           .copy(tmpArm.current)
@@ -205,8 +313,8 @@ export function useLetterPhysics({
         if (s.velocity.length() > KICK_CONFIG.maxLinearSpeed) {
           s.velocity.setLength(KICK_CONFIG.maxLinearSpeed);
         }
+        s.kicked = true;
       }
-      s.wasInside = isInside;
 
       // ---- molla di richiamo (traslazione) --------------------------------
       tmpVec.current
@@ -219,8 +327,7 @@ export function useLetterPhysics({
 
       // tetto allo spostamento: il pezzo resta sempre riconoscibile nel logo
       tmpVec.current.copy(s.position).sub(s.origin);
-      const off = tmpVec.current.length();
-      if (off > KICK_CONFIG.maxOffset) {
+      if (tmpVec.current.length() > KICK_CONFIG.maxOffset) {
         tmpVec.current.setLength(KICK_CONFIG.maxOffset);
         s.position.copy(s.origin).add(tmpVec.current);
         // annulla la componente di velocità che spinge ancora verso l'esterno
@@ -246,9 +353,9 @@ export function useLetterPhysics({
       }
 
       if (s.angularVelocity.lengthSq() > 0.0001) {
-        const w = s.angularVelocity.length();
-        tmpAxis.current.copy(s.angularVelocity).divideScalar(w);
-        tmpSpin.current.setFromAxisAngle(tmpAxis.current, w * dt);
+        const spin = s.angularVelocity.length();
+        tmpAxis.current.copy(s.angularVelocity).divideScalar(spin);
+        tmpSpin.current.setFromAxisAngle(tmpAxis.current, spin * dt);
         s.quaternion.premultiply(tmpSpin.current).normalize();
       }
 
@@ -267,7 +374,8 @@ export function useLetterPhysics({
       g.position.copy(s.position);
       g.quaternion.copy(s.quaternion);
       // la fisica scrive DOPO il render del frame precedente: aggiorniamo la
-      // matrice qui, così il raycast del prossimo frame vede la posa attuale
+      // matrice qui, così il test di contatto del frame dopo vede la posa
+      // attuale
       g.updateMatrixWorld();
     }
 
