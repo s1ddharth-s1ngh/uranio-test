@@ -1,11 +1,11 @@
-@font-face {
-  font-family: 'BeerMoney';
-  src: url('./assets/fonts/beermoney.ttf') format('truetype');
-  font-weight: normal;
-  font-style: normal;
-}
+/* BeerMoney non è più usato (l'app è tutta su Inter); il .ttf resta in
+   src/assets/fonts se dovesse servire di nuovo come display font. */
 
 :root {
+  /* font unico dell'app — vedi import in main.tsx */
+  --font-sans: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI',
+    Roboto, Helvetica, Arial, sans-serif;
+
   --color-primary: #9137f9;
   --color-secondary: #7946fa;
   --color-accent: #3ebedb;
@@ -27,7 +27,7 @@ html {
 }
 
 body {
-  font-family: 'BeerMoney', system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans);
   background-color: var(--color-primary);
   background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
   color: var(--color-white);

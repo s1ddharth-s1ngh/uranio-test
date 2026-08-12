@@ -30,10 +30,14 @@ export const KICK_CONFIG = {
   deadZonePx: 70,
   // velocità a cui la curva arriva a 1: oltre, la risposta è la massima. Va
   // tenuta alta, altrimenti tutta la gamma utile si schiaccia in basso.
-  rangePx: 2600,
+  rangePx: 2200,
   // esponente della curva: <1 dà corpo alla parte bassa (gesti lenti che si
-  // vedono) mantenendo il vertice al massimo
-  curveExp: 0.6,
+  // vedono) mantenendo il vertice al massimo. Tarato in modo che a 150 e 400
+  // px/s — la fascia in cui si muove davvero il mouse — la risposta sia quella
+  // a cui il progetto era abituato, lasciando però una testa vera sopra: a
+  // 2500 px/s si arriva a più del doppio, cosa che prima era impossibile
+  // perché il sistema saturava già a 300 px/s.
+  curveExp: 0.5,
   // costante di tempo (s) del filtro sulla velocità del cursore
   velSmoothing: 0.025,
   // oltre questo spostamento in UN frame non è un gesto ma un teletrasporto
@@ -56,13 +60,11 @@ export const KICK_CONFIG = {
   // guadagno rotazionale: converte la spinta in velocità angolare. È separato
   // dal guadagno lineare apposta — la rotazione è la parte espressiva
   // dell'interazione e va spinta, la traslazione va tenuta corta.
-  spinGain: 1.7,
-  // guadagno lineare. Basso di proposito: a schermo il varco fra I e O è di
-  // 2 px e fra N e I di 10 px, quindi una traslazione generosa farebbe
-  // compenetrare due lettere cromate alla stessa profondità — che si legge
-  // come un bug, non come fisica. Con 0.4 lo spostamento di picco resta sotto
-  // i ~18 px e il logo non si scompone mai.
-  linGain: 0.4,
+  spinGain: 5.0,
+  // guadagno lineare: separato dal rotazionale così si possono dosare
+  // indipendentemente. La traslazione resta comunque il canale secondario —
+  // è la rotazione a leggersi come "il pezzo reagisce".
+  linGain: 1.6,
   // per quanti secondi il contatto resta "agganciato" dopo che il cursore è
   // uscito dalla sagoma. Senza questa isteresi, attraversare l'occhiello di
   // una O o il tremolio sul bordo riarmano l'impulso PIENO decine di volte.
@@ -81,23 +83,27 @@ export const KICK_CONFIG = {
   // renderebbe l'emblema immobile)
   refRadius: 0.88,
   sizeExpAngular: 0.15,
-  sizeExpLinear: 0.5,
+  // basso di proposito: con 0.5 l'emblema traslava la metà di una lettera e
+  // sembrava inchiodato al centro del logo
+  sizeExpLinear: 0.25,
 
   // --- tetti invalicabili ---------------------------------------------------
-  maxLinearSpeed: 3.5,
-  maxAngularSpeed: 3.0,
-  // ~25 px: circa il doppio dello spostamento di picco raggiungibile, quindi è
-  // una rete di sicurezza contro l'accumulo, non un limite che si tocca sempre
-  maxOffset: 0.2,
+  // Reti di sicurezza contro l'accumulo, non limiti che si toccano a ogni
+  // gesto: la curva di risposta arriva al suo massimo ben prima. Se scattano
+  // di continuo vuol dire che la taratura sopra è sbagliata.
+  maxLinearSpeed: 5.0,
+  maxAngularSpeed: 11.0,
+  maxOffset: 0.5, // ≈ 63 px, meno del 45% del passo fra due lettere (146 px)
 
   // --- molle di richiamo ----------------------------------------------------
   // traslazione: ω = √k ≈ 5.8 rad/s, ζ = c / 2√k ≈ 0.64
   k: 34,
   c: 7.5,
-  // rotazione: ω = √restoreTorque = 4.0 rad/s, ζ = damping / 2√rt = 0.70
-  // → un solo rimbalzo morbido, a riposo in ~1.4 s
-  damping: 5.6,
-  restoreTorque: 16,
+  // rotazione: ω = √restoreTorque = 4.5 rad/s, ζ = damping / 2√rt = 0.70
+  // → un solo rimbalzo morbido, a riposo in poco più di un secondo anche
+  // partendo da rotazioni ampie
+  damping: 6.3,
+  restoreTorque: 20,
 
   // --- test di contatto -----------------------------------------------------
   // raggio del "pennello" attorno al cursore, in px: si può SFIORARE il bordo

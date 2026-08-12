@@ -2,8 +2,9 @@
   --bg: #050505;
   --fg: #f2f2f2;
   --fg-muted: #9c9c9c;
-  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono",
-    Menlo, Consolas, monospace;
+  /* tutta l'app gira su Inter: anche le etichette "mono" (TopBar, ScrollPill)
+     usano Inter, la spaziatura la fa il letter-spacing */
+  --font-mono: var(--font-sans);
 
   position: relative;
   min-height: 100vh;
@@ -11,15 +12,7 @@
   width: 100%;
   background-color: var(--bg);
   color: var(--fg);
-  font-family:
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    Roboto,
-    "Helvetica Neue",
-    Arial,
-    sans-serif;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   /* solo orizzontale: non crea uno scroll container, quindi lo sticky
      della sezione about continua a funzionare */

@@ -36,7 +36,7 @@
   top: clamp(24px, 7vh, 64px);
   left: 0;
   right: 0;
-  font-family: var(--se-font-mono, ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, monospace);
+  font-family: var(--font-sans);
   font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.14em;
@@ -44,9 +44,7 @@
 }
 
 .title {
-  /* Grotesque display stack; swap for the project display font if wanted:
-     font-family: 'BeerMoney', ... */
-  font-family: var(--se-font-display, "Helvetica Neue", Inter, Helvetica, Arial, sans-serif);
+  font-family: var(--font-sans);
   font-size: clamp(44px, 8.5vw, 128px);
   font-weight: 500;
   line-height: 0.98;
@@ -58,7 +56,7 @@
 .label {
   position: absolute;
   bottom: 26px;
-  font-family: var(--se-font-mono, ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, monospace);
+  font-family: var(--font-sans);
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.12em;
