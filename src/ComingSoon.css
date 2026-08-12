@@ -67,7 +67,7 @@
 
 .title-top {
   font-size: 4rem;
-  letter-spacing: 4px;
+  letter-spacing: 1px;
   margin: 0;
   line-height: 1;
   color: var(--color-white);
@@ -88,7 +88,7 @@
   color: var(--color-accent);
   margin-top: 0.5rem;
   text-transform: uppercase;
-  letter-spacing: 3px;
+  letter-spacing: 1px;
   text-shadow: 2px 2px 5px rgba(0,0,0,0.4);
   animation: float 6s ease-in-out infinite 0.5s;
 }
@@ -162,7 +162,7 @@
   line-height: 1.5;
   margin-bottom: 3rem;
   color: rgba(255, 255, 255, 0.9);
-  letter-spacing: 1.5px;
+  letter-spacing: 0.4px;
   min-height: 5.4rem; /* Prevent layout shift during typing */
 }
 
@@ -187,7 +187,7 @@
   padding-top: 2rem;
   font-size: 1.2rem;
   color: rgba(255, 255, 255, 0.6);
-  letter-spacing: 1px;
+  letter-spacing: 0.3px;
 }
 
 @media (max-width: 900px) {

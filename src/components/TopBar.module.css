@@ -10,7 +10,7 @@
   padding: clamp(1rem, 2.5vw, 1.6rem) clamp(1.25rem, 4vw, 2.5rem);
   font-family: var(--font-mono);
   font-size: 0.68rem;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   background: transparent;
   opacity: 0;
@@ -51,7 +51,7 @@
   color: var(--fg);
   font-size: 0.95rem;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.01em;
   text-transform: lowercase;
   text-decoration: none;
 }
@@ -206,7 +206,7 @@
   padding: 0.55em 1em; /* tap target abbondante */
   color: var(--fg);
   font-size: clamp(1.3rem, 6vw, 2rem);
-  letter-spacing: 0.14em;
+  letter-spacing: 0.04em;
   text-decoration: none;
   text-align: center;
 }

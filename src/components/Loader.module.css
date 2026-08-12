@@ -26,8 +26,8 @@
 
 .label {
   font-size: 0.625rem;
-  letter-spacing: 0.4em;
-  text-indent: 0.4em; /* compensa lo spazio dell'ultima lettera: resta centrato */
+  letter-spacing: 0.12em;
+  text-indent: 0.12em; /* compensa lo spazio dell'ultima lettera: resta centrato */
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.45);
 }
