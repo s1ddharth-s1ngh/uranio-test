@@ -25,19 +25,17 @@ import type { PointerState } from "./useWindowPointer";
 
 export const KICK_CONFIG = {
   // --- curva di risposta: px/s del cursore → energia normalizzata 0..1 ------
-  // sotto questa velocità il contatto non calcia: filtra il tremolio della
-  // mano (1 px/frame a 60fps = 60 px/s) senza tagliare i gesti lenti veri
-  deadZonePx: 70,
-  // velocità a cui la curva arriva a 1: oltre, la risposta è la massima. Va
-  // tenuta alta, altrimenti tutta la gamma utile si schiaccia in basso.
-  rangePx: 2200,
-  // esponente della curva: <1 dà corpo alla parte bassa (gesti lenti che si
-  // vedono) mantenendo il vertice al massimo. Tarato in modo che a 150 e 400
-  // px/s — la fascia in cui si muove davvero il mouse — la risposta sia quella
-  // a cui il progetto era abituato, lasciando però una testa vera sopra: a
-  // 2500 px/s si arriva a più del doppio, cosa che prima era impossibile
-  // perché il sistema saturava già a 300 px/s.
-  curveExp: 0.5,
+  // Sotto questa velocità il contatto NON calcia. È alta di proposito:
+  // muovere il mouse sul logo in modo normale (200-400 px/s) non deve
+  // disturbare la composizione. Solo un gesto deciso la muove.
+  deadZonePx: 400,
+  // velocità a cui la curva arriva a 1: oltre, la risposta è la massima
+  rangePx: 3000,
+  // Esponente > 1 = curva ESPANSIVA: schiaccia la parte bassa e concentra
+  // l'energia in alto. È questo, insieme alla dead zone, a dare "sensibilità
+  // bassissima ma se vado veloce si spostano": a 700 px/s si muove appena, a
+  // 1500 px/s si vede, a 2500+ i pezzi vengono davvero spinti via.
+  curveExp: 2.0,
   // costante di tempo (s) del filtro sulla velocità del cursore
   velSmoothing: 0.025,
   // oltre questo spostamento in UN frame non è un gesto ma un teletrasporto
@@ -50,21 +48,21 @@ export const KICK_CONFIG = {
   // arrivi già lanciato (energia da 0 a E in un frame) o che parta da fermo
   // appoggiato sul pezzo (energia che sale in dieci frame), il totale erogato
   // è lo stesso — ed è per questo che il calcio non dipende dal frame rate.
-  kickSpeed: 3.6,
+  kickSpeed: 5.0,
   // quanto in fretta il "massimo raggiunto" si dimentica (1/s): permette a una
   // seconda accelerazione dentro lo stesso contatto di dare un nuovo impulso
   peakDecay: 1.5,
   // accelerazione della spinta CONTINUA finché il cursore resta a contatto e
   // si muove (unità locali/s²): è questa a dare la sensazione di SPINGERE
-  dragAccel: 16,
+  dragAccel: 22,
   // guadagno rotazionale: converte la spinta in velocità angolare. È separato
   // dal guadagno lineare apposta — la rotazione è la parte espressiva
   // dell'interazione e va spinta, la traslazione va tenuta corta.
-  spinGain: 5.0,
+  spinGain: 5.2,
   // guadagno lineare: separato dal rotazionale così si possono dosare
   // indipendentemente. La traslazione resta comunque il canale secondario —
   // è la rotazione a leggersi come "il pezzo reagisce".
-  linGain: 1.6,
+  linGain: 4.5,
   // per quanti secondi il contatto resta "agganciato" dopo che il cursore è
   // uscito dalla sagoma. Senza questa isteresi, attraversare l'occhiello di
   // una O o il tremolio sul bordo riarmano l'impulso PIENO decine di volte.
@@ -91,9 +89,9 @@ export const KICK_CONFIG = {
   // Reti di sicurezza contro l'accumulo, non limiti che si toccano a ogni
   // gesto: la curva di risposta arriva al suo massimo ben prima. Se scattano
   // di continuo vuol dire che la taratura sopra è sbagliata.
-  maxLinearSpeed: 5.0,
-  maxAngularSpeed: 11.0,
-  maxOffset: 0.5, // ≈ 63 px, meno del 45% del passo fra due lettere (146 px)
+  maxLinearSpeed: 8.0,
+  maxAngularSpeed: 12.0,
+  maxOffset: 0.6, // ≈ 76 px, poco più della metà del passo fra due lettere (146 px)
 
   // --- molle di richiamo ----------------------------------------------------
   // traslazione: ω = √k ≈ 5.8 rad/s, ζ = c / 2√k ≈ 0.64

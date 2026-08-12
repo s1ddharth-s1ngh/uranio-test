@@ -48,16 +48,19 @@
 }
 
 .logo {
-  color: var(--fg);
-  font-size: 0.95rem;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  text-transform: lowercase;
+  display: flex;
+  align-items: center;
   text-decoration: none;
+  /* il marchio è un PNG quasi bianco su fondo scuro: nessun filtro colore */
 }
 
-.dot {
-  color: #ffd91f;
+.logoMark {
+  display: block;
+  height: clamp(2rem, 4.5vw, 2.6rem);
+  width: auto;
+  /* il PNG ha un po' d'aria attorno al segno: il margine negativo la
+     riassorbe, così il marchio si allinea otticamente alla nav */
+  margin: -0.35em 0;
 }
 
 .right {

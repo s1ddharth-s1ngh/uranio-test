@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useMediaQuery } from "../hooks/useMediaQuery";
+import uranioMark from "../assets/uranio-mark.png";
 import styles from "./TopBar.module.css";
 
 interface TopBarProps {
@@ -175,8 +176,15 @@ export default function TopBar({ revealed }: TopBarProps) {
         </div>
       )}
 
-      <Link to="/" className={styles.logo} onClick={close}>
-        uranio<span className={styles.dot}>.</span>
+      <Link to="/" className={styles.logo} onClick={close} aria-label="Uranio">
+        <img
+          src={uranioMark}
+          className={styles.logoMark}
+          alt=""
+          width={256}
+          height={256}
+          decoding="async"
+        />
       </Link>
 
       <nav
