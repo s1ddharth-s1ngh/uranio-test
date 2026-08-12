@@ -9,8 +9,12 @@
   transition: transform 0.6s cubic-bezier(0.76, 0, 0.24, 1);
 }
 
+/* mentre esce non deve più intercettare i click: in reduced-motion il pannello
+   resta geometricamente a schermo intero (sotto sparisce solo l'opacità) per
+   750 ms, e senza questo i click cadrebbero su un overlay invisibile */
 .leaving {
   transform: translateY(-100%);
+  pointer-events: none;
 }
 
 .counter {

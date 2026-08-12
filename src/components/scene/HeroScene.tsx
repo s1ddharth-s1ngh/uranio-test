@@ -1,6 +1,6 @@
 import { Component, Suspense, useMemo } from "react";
 import type { ReactNode } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import {
   Environment,
   Lightformer,
@@ -161,7 +161,11 @@ function SceneContents({
   portrait: boolean;
   view: ViewConfig;
 }) {
-  const pointer = useWindowPointer();
+  // il puntatore va ancorato al CANVAS, non alla finestra: l'hero è in flusso
+  // normale e scorre con la pagina, quindi normalizzare su window.innerHeight
+  // farebbe testare un punto che sta S px sopra il cursore, con S = lo scroll
+  const canvasEl = useThree((s) => s.gl.domElement);
+  const pointer = useWindowPointer(canvasEl);
 
   return (
     <>

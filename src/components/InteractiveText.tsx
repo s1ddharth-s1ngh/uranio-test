@@ -7,7 +7,10 @@ interface InteractiveTextProps {
   className?: string;
   radius?: number; // raggio di influenza in px
   strength?: number; // spostamento massimo in px
-  ease?: number; // morbidezza del ritorno (0..1, più basso = più lento)
+  // velocità di inseguimento in 1/s (NON un fattore per frame: quello renderebbe
+  // le lettere il doppio più reattive su un pannello a 120 Hz). 7.7 ≈ il vecchio
+  // lerp 0.12 a 60 fps.
+  easeRate?: number;
   maxRotation?: number; // rotazione massima in gradi
 }
 
@@ -68,7 +71,7 @@ export default function InteractiveText({
   className = "",
   radius = 140,
   strength = 40,
-  ease = 0.12,
+  easeRate = 7.7,
   maxRotation = 12,
 }: InteractiveTextProps) {
   const containerRef = useRef<HTMLSpanElement>(null);
@@ -145,8 +148,14 @@ export default function InteractiveText({
 
     let rafId = 0;
     let running = false;
+    let last = 0;
 
-    const loop = () => {
+    const loop = (now: number) => {
+      // passo temporale reale, non "un frame": così la costante di tempo è la
+      // stessa a 30, 60 e 144 Hz
+      const dt = Math.min((now - last) / 1000 || 1 / 60, 0.05);
+      last = now;
+      const k = 1 - Math.exp(-easeRate * dt);
       const m = mouse;
       let settled = true;
 
@@ -172,9 +181,9 @@ export default function InteractiveText({
         }
 
         // Interpolazione morbida verso il target (vale sia per andata che ritorno)
-        s.x = lerp(s.x, s.tx, ease);
-        s.y = lerp(s.y, s.ty, ease);
-        s.r = lerp(s.r, s.tr, ease);
+        s.x = lerp(s.x, s.tx, k);
+        s.y = lerp(s.y, s.ty, k);
+        s.r = lerp(s.r, s.tr, k);
 
         if (
           Math.abs(s.x - s.tx) > SETTLE_EPS ||
@@ -199,6 +208,7 @@ export default function InteractiveText({
     const wake = () => {
       if (!running) {
         running = true;
+        last = performance.now();
         rafId = requestAnimationFrame(loop);
       }
     };
@@ -277,7 +287,7 @@ export default function InteractiveText({
       document.removeEventListener("mouseleave", deactivate);
       for (const el of chars) el.style.transform = "";
     };
-  }, [text, totalChars, radius, strength, ease, maxRotation, reduceMotion]);
+  }, [text, totalChars, radius, strength, easeRate, maxRotation, reduceMotion]);
 
   let charIndex = 0;
 

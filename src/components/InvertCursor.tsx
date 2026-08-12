@@ -34,14 +34,54 @@ export default function InvertCursor({
   useEffect(() => {
     if (!enabled) return;
 
-    // tracking istantaneo se l'utente preferisce meno animazioni
-    const lerp = window.matchMedia("(prefers-reduced-motion: reduce)").matches
-      ? 1
-      : 0.35;
+    // tracking istantaneo se l'utente preferisce meno animazioni. Altrimenti
+    // inseguimento a costante di tempo (1/s), non a fattore per frame: il
+    // vecchio 0.35 per frame rendeva il cerchio il doppio più veloce su un
+    // pannello a 120 Hz. 26/s ≈ 0.35 a 60 fps.
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const RATE = 26;
+
+    const cur = { x: target.current.x, y: target.current.y };
+    let raf = 0;
+    let running = false;
+    let last = 0;
+
+    const loop = (now: number) => {
+      const dt = Math.min((now - last) / 1000 || 1 / 60, 0.05);
+      last = now;
+      const k = reduced ? 1 : 1 - Math.exp(-RATE * dt);
+
+      cur.x += (target.current.x - cur.x) * k;
+      cur.y += (target.current.y - cur.y) * k;
+      if (dot.current) {
+        dot.current.style.transform = `translate3d(${cur.x}px, ${cur.y}px, 0) translate(-50%, -50%)`;
+      }
+
+      // arrivato: il loop si spegne. Prima girava per sempre, e a ogni frame
+      // faceva getElementById + getBoundingClientRect — un forced layout per
+      // frame in parallelo al render WebGL dell'hero, anche col cerchio spento.
+      if (
+        Math.abs(target.current.x - cur.x) < 0.1 &&
+        Math.abs(target.current.y - cur.y) < 0.1
+      ) {
+        running = false;
+        return;
+      }
+      raf = requestAnimationFrame(loop);
+    };
+
+    const wake = () => {
+      if (!running) {
+        running = true;
+        last = performance.now();
+        raf = requestAnimationFrame(loop);
+      }
+    };
 
     const onMove = (e: MouseEvent) => {
       target.current.x = e.clientX;
       target.current.y = e.clientY;
+      wake();
     };
     // feedback: il cerchio cresce sugli elementi interattivi
     const onOver = (e: MouseEvent) => {
@@ -50,44 +90,37 @@ export default function InvertCursor({
         e.target.closest("a, button, [role='button']");
       dot.current?.classList.toggle("invert-cursor--grow", !!interactive);
     };
+
+    // ATTIVAZIONE: appena la 2ª sezione "arriva" (anche senza scroll completo),
+    // e resta attiva per tutto ciò che sta sotto. Legata a scroll/resize, non
+    // al render loop. La sezione è lazy: un ricontrollo differito copre il caso
+    // in cui il chunk non fosse ancora montato al mount di questo effetto.
+    const updateActive = () => {
+      const el = document.getElementById(sectionId);
+      if (!el) return;
+      const shouldActive =
+        el.getBoundingClientRect().top <= window.innerHeight * trigger;
+      if (shouldActive === active.current) return;
+      active.current = shouldActive;
+      document.body.classList.toggle("invert-cursor-active", shouldActive);
+      if (dot.current) dot.current.style.opacity = shouldActive ? "1" : "0";
+    };
+    updateActive();
+    const retry = setTimeout(updateActive, 1500);
+
     window.addEventListener("mousemove", onMove, { passive: true });
     window.addEventListener("mouseover", onOver, { passive: true });
-
-    const cur = { x: target.current.x, y: target.current.y };
-    let raf = 0;
-
-    const loop = () => {
-      raf = requestAnimationFrame(loop);
-
-      // follow morbido
-      cur.x += (target.current.x - cur.x) * lerp;
-      cur.y += (target.current.y - cur.y) * lerp;
-      if (dot.current) {
-        dot.current.style.transform = `translate3d(${cur.x}px, ${cur.y}px, 0) translate(-50%, -50%)`;
-      }
-
-      // ATTIVAZIONE: appena la 2ª sezione "arriva" (anche senza scroll
-      // completo), e resta attiva per tutto ciò che sta sotto. La sezione è
-      // lazy: la ricerca per id resta nel loop finché il chunk non è montato.
-      const el = document.getElementById(sectionId);
-      if (el) {
-        const top = el.getBoundingClientRect().top;
-        const shouldActive = top <= window.innerHeight * trigger;
-        if (shouldActive !== active.current) {
-          active.current = shouldActive;
-          document.body.classList.toggle("invert-cursor-active", shouldActive);
-          if (dot.current) {
-            dot.current.style.opacity = shouldActive ? "1" : "0";
-          }
-        }
-      }
-    };
-    raf = requestAnimationFrame(loop);
+    window.addEventListener("scroll", updateActive, { passive: true });
+    window.addEventListener("resize", updateActive);
+    wake();
 
     return () => {
+      clearTimeout(retry);
       cancelAnimationFrame(raf);
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseover", onOver);
+      window.removeEventListener("scroll", updateActive);
+      window.removeEventListener("resize", updateActive);
       active.current = false;
       document.body.classList.remove("invert-cursor-active");
     };

@@ -37,15 +37,15 @@ const PIECES: { id: string; nodes: string[] }[] = [
 const LOGO_BASE = 6.0;
 
 // lato della cella della maschera di silhouette, in unità del logo normalizzato
-// (LOGO_BASE = 6): ~0.02 → griglie di 100-300 celle per lato, sagome fedeli
-// anche sui buchi stretti di R/A/O e sul manico dell'emblema
-const MASK_CELL = 0.02;
+// (LOGO_BASE = 6): ~0.015 → griglie di 130-410 celle per lato, sagome fedeli
+// anche sui buchi stretti di R/A/O e sul manico dell'emblema. Più fine di così
+// non serve: sotto la cella c'è già la tolleranza del pennello.
+const MASK_CELL = 0.015;
 
 interface Piece {
   id: string;
   holder: THREE.Object3D; // mesh(es) centrate sul baricentro del pezzo
   restPos: [number, number, number]; // baricentro nel logo assemblato+centrato
-  sizeFactor: number;
   boundR: number;
   mask: PieceMask;
 }
@@ -141,8 +141,10 @@ export default function UranioLogo({
         id: def.id,
         holder,
         restPos: [c.x, c.y, c.z],
-        // taglia usata per scalare l'impulso: lettere ~0.9, emblema clampato
-        sizeFactor: Math.min(1.3, Math.max(0.5, r)),
+        // raggio REALE (lettere ~0.85, emblema 3.79): normalizza il braccio
+        // della coppia e pesa la reattività. Non va clampato — era il clamp a
+        // rendere l'emblema reattivo quanto una lettera pur essendo 25× più
+        // grande, e a far saturare i tetti a ogni gesto
         boundR: r,
         // sagoma rasterizzata per il test di contatto col cursore: la
         // bounding sphere da sola è inservibile (l'emblema è una L, il suo
@@ -184,8 +186,7 @@ export default function UranioLogo({
       pieces.map((p) => ({
         id: p.id,
         restPos: p.restPos,
-        sizeFactor: p.sizeFactor,
-        boundR: p.boundR,
+        radius: p.boundR,
         mask: p.mask,
       })),
     [pieces],
@@ -201,8 +202,10 @@ export default function UranioLogo({
   });
 
   // Il logo è FISSO e frontale: non ruota né trasla in base al mouse. Reagisce
-  // solo quando un pezzo viene "toccato"/colpito, e i pezzi si urtano tra loro
-  // come solidi rigidi (niente compenetrazione, rimbalzo).
+  // solo quando un pezzo viene "toccato"/colpito, e ciascun pezzo torna al suo
+  // posto con una molla propria. NB: non c'è collisione pezzo-pezzo — i tetti
+  // maxOffset/maxAngularSpeed tengono le sagome abbastanza vicine al riposo da
+  // non farle mai compenetrare in modo percepibile.
   return (
     <group scale={fit} position={[0, yOffset, 0]}>
       {pieces.map((p, i) => (

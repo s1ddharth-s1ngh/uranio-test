@@ -40,7 +40,10 @@ export function buildPieceMask(
   const minY = box.min.y - center.y - pad;
   const span =
     Math.max(box.max.x - box.min.x, box.max.y - box.min.y) + 2 * pad;
-  const res = Math.min(320, Math.max(48, Math.ceil(span / targetCell)));
+  // il tetto vale solo per l'emblema (span ~6): a 512 la cella resta ~0.012
+  // unità = 1.5 px a schermo, abbastanza fine da non chiudere l'interno
+  // dell'anello. 512² = 256 KB, costruita una volta sola.
+  const res = Math.min(512, Math.max(48, Math.ceil(span / targetCell)));
   const cell = span / res;
   const data = new Uint8Array(res * res);
 
@@ -100,8 +103,11 @@ export function buildPieceMask(
     }
   }
 
-  // dilatazione di 1 cella: chiude gli spilli lasciati dai triangoli a scheggia
-  // delle pareti di estrusione, senza gonfiare la sagoma in modo percepibile
+  // CHIUSURA morfologica (dilatazione + erosione), non semplice dilatazione:
+  // gli spilli lasciati dai triangoli a scheggia delle pareti di estrusione si
+  // richiudono lo stesso, ma il contorno NON si gonfia di una cella. Con la
+  // sola dilatazione la sagoma calciante cresceva di ~2 px per lato su ogni
+  // bordo, occhielli di R/A/O compresi.
   const dil = new Uint8Array(data);
   for (let y = 0; y < res; y++) {
     for (let x = 0; x < res; x++) {
@@ -117,12 +123,29 @@ export function buildPieceMask(
       }
     }
   }
+  // erosione: una cella resta piena solo se tutto il suo 3×3 lo è. Le celle
+  // originali sopravvivono sempre (sono circondate da celle dilatate), quelle
+  // aggiunte lungo un bordo convesso no.
+  const out = new Uint8Array(dil.length);
+  for (let y = 1; y < res - 1; y++) {
+    for (let x = 1; x < res - 1; x++) {
+      const i = y * res + x;
+      if (!dil[i]) continue;
+      if (
+        dil[i - 1] && dil[i + 1] &&
+        dil[i - res] && dil[i - res - 1] && dil[i - res + 1] &&
+        dil[i + res] && dil[i + res - 1] && dil[i + res + 1]
+      ) {
+        out[i] = 1;
+      }
+    }
+  }
 
   return {
     res,
     min: new THREE.Vector2(minX, minY),
     cell,
-    data: dil,
+    data: out,
     zFront: box.max.z - center.z,
   };
 }
