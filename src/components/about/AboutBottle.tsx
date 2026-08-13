@@ -3,20 +3,14 @@ import type { RefObject } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
+import { buildBottleAssembly } from "./bottleAssembly";
 
-const MODEL_URL = `${import.meta.env.BASE_URL}3d/corona_beer_bottle.glb`;
-useGLTF.preload(MODEL_URL);
-
-// Il GLB (scena Sketchfab) contiene DUE bottiglie: quella in piedi piena
-// ("corona_beer" + il liquido dentro) e una vuota coricata di fianco
-// ("corona_beer_empty"), spostata di ~4 unità. Qui serve un solo oggetto che
-// gira su sé stesso: tengo la bottiglia in piedi e scarto la vuota.
-const KEEP_NODE = "corona_beer";
-
-// La bottiglia nel GLB ha una imbardata propria di 2.135 rad: la annullo così
-// la posa a riposo (inizio e fine sezione) è quella "frontale" del modello.
-// Se l'etichetta non guarda in camera, è questo il numero da ritoccare.
-const LABEL_YAW = -2.135;
+// Bottiglia e tappo sono due modelli separati: li incastro io in un unico
+// oggetto (vedi bottleAssembly.ts) così sembra una bottiglia chiusa.
+const BOTTLE_URL = `${import.meta.env.BASE_URL}3d/ginger_beer_bottle.glb`;
+const CAP_URL = `${import.meta.env.BASE_URL}3d/old_antic_beer_bottle_cap.glb`;
+useGLTF.preload(BOTTLE_URL);
+useGLTF.preload(CAP_URL);
 
 const TAU = Math.PI * 2;
 
@@ -59,56 +53,16 @@ export function AboutBottle({
   narrow = false,
   touch = false,
 }: AboutBottleProps) {
-  const { scene } = useGLTF(MODEL_URL);
+  const bottleGltf = useGLTF(BOTTLE_URL);
+  const capGltf = useGLTF(CAP_URL);
 
-  // Clona, tiene la sola bottiglia in piedi e ricentra: il GLB ha il pivot
-  // alla BASE, per i 360° deve girare attorno al baricentro. Materiali
-  // originali (vetro trasmissivo + etichetta in texture) con due correzioni
-  // di pipeline, vedi sotto.
-  const model = useMemo(() => {
-    const root = scene.clone(true);
-
-    const bottle = root.getObjectByName(KEEP_NODE);
-    if (bottle) {
-      // stacco il nodo dalla scena Sketchfab ma conservo la matrice mondo
-      // (contiene la scala 0.01 dell'FBX e il raddrizzamento Z-up → Y-up)
-      root.updateWorldMatrix(true, true);
-      const world = bottle.matrixWorld.clone();
-      bottle.removeFromParent();
-      bottle.matrix.copy(world);
-      bottle.matrix.decompose(bottle.position, bottle.quaternion, bottle.scale);
-      root.clear();
-      root.add(bottle);
-    }
-
-    root.traverse((o) => {
-      const mesh = o as THREE.Mesh;
-      if (!mesh.isMesh) return;
-      const mat = mesh.material as THREE.MeshStandardMaterial;
-      // Il liquido: era transparent, ma il vetro usa KHR_materials_transmission
-      // e la passata di trasmissione disegna solo gli opachi → da trasparente
-      // sparirebbe dietro al vetro. Opaco resta visibile.
-      // In più il GLB lo dà metallico e a specchio: la birra è un dielettrico.
-      if (mat?.name === "corona_berr_liquid") {
-        mat.transparent = false;
-        mat.opacity = 1;
-        mat.depthWrite = true;
-        mat.metalness = 0.05;
-        mat.roughness = 0.25;
-        mat.needsUpdate = true;
-      }
-    });
-
-    const box = new THREE.Box3().setFromObject(root);
-    const dims = box.getSize(new THREE.Vector3());
-    const center = box.getCenter(new THREE.Vector3());
-    root.position.sub(center);
-    const holder = new THREE.Group();
-    holder.add(root);
-    holder.scale.setScalar(2 / (dims.y || 1)); // altezza normalizzata ~2 unità
-    holder.rotation.y = LABEL_YAW;
-    return holder;
-  }, [scene]);
+  // Bottiglia raddrizzata + tappo calzato sulla bocca, centrati sull'origine e
+  // alti 2 unità (deve girare attorno al baricentro). Il tappo resta un gruppo
+  // a sé, ritrovabile con getObjectByName("cap"): è quello che poi salterà via.
+  const model = useMemo(
+    () => buildBottleAssembly(bottleGltf.scene, capGltf.scene).holder,
+    [bottleGltf.scene, capGltf.scene],
+  );
 
   const group = useRef<THREE.Group>(null);
   const smooth = useRef(0);
