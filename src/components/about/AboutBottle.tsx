@@ -4,8 +4,19 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 
-const MODEL_URL = `${import.meta.env.BASE_URL}3d/PolygonalMindLogo_Art.glb`;
+const MODEL_URL = `${import.meta.env.BASE_URL}3d/corona_beer_bottle.glb`;
 useGLTF.preload(MODEL_URL);
+
+// Il GLB (scena Sketchfab) contiene DUE bottiglie: quella in piedi piena
+// ("corona_beer" + il liquido dentro) e una vuota coricata di fianco
+// ("corona_beer_empty"), spostata di ~4 unità. Qui serve un solo oggetto che
+// gira su sé stesso: tengo la bottiglia in piedi e scarto la vuota.
+const KEEP_NODE = "corona_beer";
+
+// La bottiglia nel GLB ha una imbardata propria di 2.135 rad: la annullo così
+// la posa a riposo (inizio e fine sezione) è quella "frontale" del modello.
+// Se l'etichetta non guarda in camera, è questo il numero da ritoccare.
+const LABEL_YAW = -2.135;
 
 const TAU = Math.PI * 2;
 
@@ -50,11 +61,44 @@ export function AboutBottle({
 }: AboutBottleProps) {
   const { scene } = useGLTF(MODEL_URL);
 
-  // Clona e ricentra: il GLB ha il pivot alla BASE (y 0→2.07); per i 360°
-  // deve ruotare attorno al baricentro. Materiali originali mantenuti
-  // (il modello è texturizzato, l'occhio è dipinto nella texture)
+  // Clona, tiene la sola bottiglia in piedi e ricentra: il GLB ha il pivot
+  // alla BASE, per i 360° deve girare attorno al baricentro. Materiali
+  // originali (vetro trasmissivo + etichetta in texture) con due correzioni
+  // di pipeline, vedi sotto.
   const model = useMemo(() => {
     const root = scene.clone(true);
+
+    const bottle = root.getObjectByName(KEEP_NODE);
+    if (bottle) {
+      // stacco il nodo dalla scena Sketchfab ma conservo la matrice mondo
+      // (contiene la scala 0.01 dell'FBX e il raddrizzamento Z-up → Y-up)
+      root.updateWorldMatrix(true, true);
+      const world = bottle.matrixWorld.clone();
+      bottle.removeFromParent();
+      bottle.matrix.copy(world);
+      bottle.matrix.decompose(bottle.position, bottle.quaternion, bottle.scale);
+      root.clear();
+      root.add(bottle);
+    }
+
+    root.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const mat = mesh.material as THREE.MeshStandardMaterial;
+      // Il liquido: era transparent, ma il vetro usa KHR_materials_transmission
+      // e la passata di trasmissione disegna solo gli opachi → da trasparente
+      // sparirebbe dietro al vetro. Opaco resta visibile.
+      // In più il GLB lo dà metallico e a specchio: la birra è un dielettrico.
+      if (mat?.name === "corona_berr_liquid") {
+        mat.transparent = false;
+        mat.opacity = 1;
+        mat.depthWrite = true;
+        mat.metalness = 0.05;
+        mat.roughness = 0.25;
+        mat.needsUpdate = true;
+      }
+    });
+
     const box = new THREE.Box3().setFromObject(root);
     const dims = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
@@ -62,6 +106,7 @@ export function AboutBottle({
     const holder = new THREE.Group();
     holder.add(root);
     holder.scale.setScalar(2 / (dims.y || 1)); // altezza normalizzata ~2 unità
+    holder.rotation.y = LABEL_YAW;
     return holder;
   }, [scene]);
 
@@ -101,7 +146,7 @@ export function AboutBottle({
     let sc: number;
     if (narrow) {
       // fase centrale: in alto e piccola — il testo (larghezza piena, fino a
-      // ~44vh dal basso) resta sotto il bordo inferiore della piramide
+      // ~44vh dal basso) resta sotto il bordo inferiore della bottiglia
       x = 0;
       y = kf(p, [[0, -0.1], [0.02, -0.1], [0.48, 0.95], [0.6, 0.95], [0.98, -0.1], [1, -0.1]]);
       sc = kf(p, [[0, 1.15], [0.02, 1.15], [0.48, 0.55], [0.6, 0.55], [0.98, 1.15], [1, 1.15]]);
@@ -113,9 +158,9 @@ export function AboutBottle({
     // due giri completi: 0→2π nella Transizione A, 2π→4π nella Transizione B
     const ry = kf(p, [[0, 0], [0.02, 0], [0.48, TAU], [0.6, TAU], [0.98, TAU * 2], [1, TAU * 2]]);
 
-    // --- OCCHIO CHE TI GUARDA (fallback: l'occhio è nella texture, quindi
-    // l'intero modello si inclina verso il cursore — sottile, smorzato,
-    // clampato; più marcato quando la bottiglia è grande al centro) ---
+    // --- PARALLASSE VERSO IL CURSORE (la bottiglia si inclina verso il
+    // puntatore — sottile, smorzata, clampata; più marcata quando è
+    // grande al centro) ---
     const eyeAmp = kf(p, [[0, 1], [0.02, 0.95], [0.48, 0.45], [0.6, 0.45], [0.98, 1], [1, 1]]);
     const k2 = 1 - Math.exp(-5 * dt);
     if (touch) {

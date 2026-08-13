@@ -113,7 +113,7 @@ export default function AboutSection() {
                   scale={[5, 3, 1]}
                 />
               </Environment>
-              {/* piramide centrale che guida lo scrollytelling */}
+              {/* bottiglia centrale che guida lo scrollytelling */}
               <AboutBottle
                 progress={progress}
                 reduceMotion={reduceMotion}
