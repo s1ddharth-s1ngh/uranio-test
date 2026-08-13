@@ -36,6 +36,17 @@ export const KICK_CONFIG = {
   // bassissima ma se vado veloce si spostano": a 700 px/s si muove appena, a
   // 1500 px/s si vede, a 2500+ i pezzi vengono davvero spinti via.
   curveExp: 2.0,
+
+  // --- profilo TOUCH --------------------------------------------------------
+  // Un dito trascina molto più piano di un flick di mouse, e soprattutto sul
+  // touch il gesto È l'interazione: non c'è un hover di scorta, quindi un
+  // trascinamento deliberato deve già muovere i pezzi. Stessa forma di curva,
+  // tarata su velocità più basse — abbassare la sola dead zone non basterebbe,
+  // con esponente 2 e fondoscala a 3000 px/s un dito resterebbe comunque
+  // schiacciato sullo zero.
+  deadZoneTouchPx: 150,
+  rangeTouchPx: 1600,
+  curveExpTouch: 1.4,
   // costante di tempo (s) del filtro sulla velocità del cursore
   velSmoothing: 0.025,
   // oltre questo spostamento in UN frame non è un gesto ma un teletrasporto
@@ -145,7 +156,9 @@ interface UseLetterPhysicsArgs {
   groups: RefObject<(THREE.Group | null)[]>;
   pointer: RefObject<PointerState>;
   reduceMotion: boolean;
-  ambient: boolean;
+  /** dispositivo senza hover: il gesto del dito pilota la fisica, con una
+   *  curva di risposta tarata più in basso */
+  touch: boolean;
 }
 
 export function useLetterPhysics({
@@ -153,7 +166,7 @@ export function useLetterPhysics({
   groups,
   pointer,
   reduceMotion,
-  ambient,
+  touch,
 }: UseLetterPhysicsArgs) {
   // stato per pezzo: mutabile e vivo per tutta la vita del componente, quindi
   // in un ref. Viene popolato al primo giro DENTRO useFrame: leggere o scrivere
@@ -215,8 +228,9 @@ export function useLetterPhysics({
     const states = statesRef.current;
 
     const p = pointer.current;
-    // reduce-motion o touch: nessun input, i pezzi vanno solo a riposo
-    const canKick = p.active && !reduceMotion && !ambient;
+    // in reduce-motion nessun input: i pezzi vanno solo a riposo. Sul touch
+    // invece si calcia eccome — è l'unica interazione disponibile.
+    const canKick = p.active && !reduceMotion;
 
     // ---- dal cursore al canvas -------------------------------------------
     // Il rettangolo arriva da useWindowPointer ed è quello VERO del canvas,
@@ -257,14 +271,16 @@ export function useLetterPhysics({
     // Questa è la sola cosa che decide QUANTA energia entra: la velocità grezza
     // non arriva mai alla fisica. Risultato: monotona, limitata, e indipendente
     // sia dal frame rate sia dalla dimensione della finestra.
+    const deadZone = touch
+      ? KICK_CONFIG.deadZoneTouchPx
+      : KICK_CONFIG.deadZonePx;
+    const range = touch ? KICK_CONFIG.rangeTouchPx : KICK_CONFIG.rangePx;
+    const exponent = touch ? KICK_CONFIG.curveExpTouch : KICK_CONFIG.curveExp;
+
     let energy = 0;
-    if (speedPx > KICK_CONFIG.deadZonePx) {
-      const t = Math.min(
-        1,
-        (speedPx - KICK_CONFIG.deadZonePx) /
-          (KICK_CONFIG.rangePx - KICK_CONFIG.deadZonePx),
-      );
-      energy = Math.pow(t, KICK_CONFIG.curveExp);
+    if (speedPx > deadZone) {
+      const t = Math.min(1, (speedPx - deadZone) / (range - deadZone));
+      energy = Math.pow(t, exponent);
       tmpDir.current.copy(pointerVel.current).divideScalar(speedPx);
     }
 

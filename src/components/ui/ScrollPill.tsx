@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { usePrefersReducedMotion } from "../../hooks/usePrefersReducedMotion";
 import { INVERT_TRIGGER } from "../InvertCursor";
+import { scramble } from "../../lib/scramble";
 import styles from "./ScrollPill.module.css";
 
 // la pill sparisce ESATTAMENTE quando "arriva" la seconda sezione, cioè
@@ -19,8 +20,6 @@ interface ScrollPillProps {
 // Senza mouse (touch fermo, reduced-motion) resta al suo posto in basso
 const EASE = 5.5; // reattività dell'inseguimento: più alto = più incollata
 const CURSOR_ANCHOR = 48; // px dal bordo destro della pill al punto-cursore
-const SCRAMBLE_CHARS = "!<>-_\\/[]{}—=+*^?#";
-const SCRAMBLE_MS = 550;
 
 export default function ScrollPill({
   label = "Scorri in basso",
@@ -94,26 +93,12 @@ export default function ScrollPill({
     let last = 0;
 
     // scramble del testo alla "cattura": i caratteri si decodificano
-    // da sinistra a destra fino al testo reale
-    let scrambleRaf = 0;
+    // da sinistra a destra fino al testo reale (stesso effetto dell'avviso di
+    // scroll bloccato sul mobile — vedi src/lib/scramble.ts)
+    let stopScramble: (() => void) | null = null;
     const startScramble = () => {
-      cancelAnimationFrame(scrambleRaf);
-      const start = performance.now();
-      const step = (now: number) => {
-        const t = Math.min(1, (now - start) / SCRAMBLE_MS);
-        const solved = Math.floor(t * label.length);
-        let text = label.slice(0, solved);
-        for (let i = solved; i < label.length; i++) {
-          const ch = label[i];
-          text +=
-            ch === " "
-              ? " "
-              : SCRAMBLE_CHARS[(Math.random() * SCRAMBLE_CHARS.length) | 0];
-        }
-        labelNode.textContent = text;
-        if (t < 1) scrambleRaf = requestAnimationFrame(step);
-      };
-      scrambleRaf = requestAnimationFrame(step);
+      stopScramble?.();
+      stopScramble = scramble(labelNode, label);
     };
 
     const setHover = (next: boolean) => {
@@ -204,7 +189,7 @@ export default function ScrollPill({
 
     return () => {
       cancelAnimationFrame(raf);
-      cancelAnimationFrame(scrambleRaf);
+      stopScramble?.();
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onPointerEnd);
       window.removeEventListener("pointercancel", onPointerEnd);

@@ -55,7 +55,7 @@ interface Piece {
 interface UranioLogoProps {
   pointer: RefObject<PointerState>;
   reduceMotion: boolean;
-  ambient: boolean;
+  touch: boolean;
   fov: number;
   camZ: number;
   portrait: boolean;
@@ -64,7 +64,7 @@ interface UranioLogoProps {
 export default function UranioLogo({
   pointer,
   reduceMotion,
-  ambient,
+  touch,
   fov,
   camZ,
   portrait,
@@ -198,7 +198,7 @@ export default function UranioLogo({
     groups: groupsRef,
     pointer,
     reduceMotion,
-    ambient,
+    touch,
   });
 
   // Il logo è FISSO e frontale: non ruota né trasla in base al mouse. Reagisce

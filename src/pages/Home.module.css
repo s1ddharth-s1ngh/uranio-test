@@ -35,6 +35,14 @@
   overflow: clip;
 }
 
+/* Touch, prima sezione agganciata: nessun gesto qui dentro deve scorrere la
+   pagina — il dito serve a spingere il logo. Si scende col pulsante.
+   NB: vale insieme a .scroll-locked sull'<html> (vedi index.css); da sola
+   questa regola coprirebbe solo i tocchi che PARTONO dall'hero. */
+.heroLocked {
+  touch-action: none;
+}
+
 /* canvas WebGL a tutto schermo dietro l'overlay dell'hero */
 .scene {
   position: absolute;

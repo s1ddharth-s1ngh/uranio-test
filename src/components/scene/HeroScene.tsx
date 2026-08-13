@@ -39,6 +39,9 @@ interface HeroSceneProps {
   reduceMotion?: boolean;
   // false quando l'hero è scrollato fuori vista: il render loop si ferma
   active?: boolean;
+  // sul touch, mentre la prima sezione è agganciata: il gesto del dito non
+  // deve scorrere la pagina, deve arrivare tutto alla fisica del logo
+  lockGestures?: boolean;
 }
 
 // Configurazione camera/qualità per fascia di dispositivo. Il logo è ~quadrato
@@ -152,12 +155,12 @@ function ChromeEnvironment({ resolution = 256 }: { resolution?: number }) {
 
 function SceneContents({
   reduceMotion,
-  ambient,
+  touch,
   portrait,
   view,
 }: {
   reduceMotion: boolean;
-  ambient: boolean;
+  touch: boolean;
   portrait: boolean;
   view: ViewConfig;
 }) {
@@ -181,7 +184,7 @@ function SceneContents({
         <UranioLogo
           pointer={pointer}
           reduceMotion={reduceMotion}
-          ambient={ambient}
+          touch={touch}
           fov={view.fov}
           camZ={view.camZ}
           portrait={portrait}
@@ -213,6 +216,7 @@ class SceneErrorBoundary extends Component<
 export default function HeroScene({
   reduceMotion = false,
   active = true,
+  lockGestures = false,
 }: HeroSceneProps) {
   const isMobile = useMediaQuery("(max-width: 767px)");
   const isTablet = useMediaQuery("(min-width: 768px) and (max-width: 1023px)");
@@ -263,13 +267,14 @@ export default function HeroScene({
           gl.toneMappingExposure = TONE_MAPPING_EXPOSURE;
         }}
         frameloop={reduceMotion ? "demand" : active ? "always" : "never"}
-        // il touch verticale sul canvas deve scrollare la pagina
-        style={{ touchAction: "pan-y" }}
+        // con la prima sezione agganciata il dito serve a spingere il logo,
+        // non a scorrere; altrove il touch verticale deve poter scrollare
+        style={{ touchAction: lockGestures ? "none" : "pan-y" }}
       >
         <CameraConfig fov={view.fov} camZ={view.camZ} />
         <SceneContents
           reduceMotion={reduceMotion}
-          ambient={isTouch}
+          touch={isTouch}
           portrait={portrait}
           view={view}
         />

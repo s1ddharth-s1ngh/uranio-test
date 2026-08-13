@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useInView } from "framer-motion";
 import Loader from "../components/Loader";
@@ -6,7 +6,10 @@ import TopBar from "../components/TopBar";
 import InteractiveText from "../components/InteractiveText";
 import InvertCursor from "../components/InvertCursor";
 import ScrollPill from "../components/ui/ScrollPill";
+import HeroLock from "../components/ui/HeroLock";
 import { usePrefersReducedMotion } from "../hooks/usePrefersReducedMotion";
+import { useIsTouch } from "../hooks/useIsTouch";
+import { useHeroLock } from "../hooks/useHeroLock";
 import styles from "./Home.module.css";
 
 // Le scene WebGL (three + R3F) vivono in chunk separati: la home shell e
@@ -27,6 +30,22 @@ export default function Home() {
   const heroRef = useRef<HTMLElement>(null);
   const heroInView = useInView(heroRef, { margin: "200px 0px 200px 0px" });
 
+  // Senza hover il gesto del dito non può essere insieme scroll e interazione:
+  // nella prima sezione lo scroll è bloccato e il dito pilota il logo 3D, si
+  // scende solo col pulsante. Risalendo, la pagina si riaggancia da sola.
+  const isTouch = useIsTouch();
+  // l'avviso compare solo tornando indietro: al primo caricamento la freccia
+  // parla da sola, spiegare il blocco prima che l'utente ci sbatta è rumore
+  const [hint, setHint] = useState(false);
+  const hintTimer = useRef(0);
+  const onRelock = useCallback(() => {
+    setHint(true);
+    clearTimeout(hintTimer.current);
+    hintTimer.current = window.setTimeout(() => setHint(false), 4200);
+  }, []);
+  useEffect(() => () => clearTimeout(hintTimer.current), []);
+  const { locked, release } = useHeroLock({ enabled: isTouch, onRelock });
+
   useEffect(() => {
     document.documentElement.lang = pathname.startsWith("/en") ? "en" : "it";
   }, [pathname]);
@@ -40,13 +59,21 @@ export default function Home() {
 
       <main>
         {/* HERO: sezione alta 100vh che scorre via normalmente */}
-        <section ref={heroRef} id="hero" className={styles.hero}>
+        <section
+          ref={heroRef}
+          id="hero"
+          className={`${styles.hero} ${locked ? styles.heroLocked : ""}`}
+        >
           <div
             className={`${styles.scene} ${revealed ? styles.sceneRevealed : ""}`}
             aria-hidden="true"
           >
             <Suspense fallback={null}>
-              <HeroScene reduceMotion={reduceMotion} active={heroInView} />
+              <HeroScene
+                reduceMotion={reduceMotion}
+                active={heroInView}
+                lockGestures={locked}
+              />
             </Suspense>
           </div>
 
@@ -63,7 +90,11 @@ export default function Home() {
             </h1>
           </div>
 
-          <ScrollPill label={PILL_LABEL} revealed={revealed} />
+          {/* col mouse: la pill insegue il cursore. Col dito: un pulsante fisso,
+              perché non esiste un cursore da inseguire e lo scroll è bloccato */}
+          {isTouch ? null : (
+            <ScrollPill label={PILL_LABEL} revealed={revealed} />
+          )}
         </section>
 
         {/* CHI SIAMO: scrollytelling con canvas pinnato */}
@@ -71,6 +102,15 @@ export default function Home() {
           <AboutSection />
         </Suspense>
       </main>
+
+      {isTouch && (
+        <HeroLock
+          locked={locked}
+          hint={hint}
+          revealed={revealed}
+          onRelease={release}
+        />
+      )}
     </div>
   );
 }

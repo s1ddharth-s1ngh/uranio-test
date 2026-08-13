@@ -26,6 +26,17 @@ html {
   max-width: 100%;
 }
 
+/* Prima sezione agganciata sul touch (vedi useHeroLock): la pagina non si
+   scorre, si scende solo col pulsante. `overscroll-behavior` toglie anche il
+   rimbalzo elastico, che altrimenti farebbe sembrare lo schermo "rotto".
+   Attiva solo su touch e solo mentre l'hero è la sezione corrente, quindi lo
+   sticky della sezione About non ne risente mai. */
+html.scroll-locked,
+html.scroll-locked body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 body {
   font-family: var(--font-sans);
   background-color: var(--color-primary);
