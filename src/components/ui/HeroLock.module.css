@@ -70,27 +70,46 @@
 
 /* ------------------------------------------------------------------ */
 
+/* IN ALTO, CENTRATO. Non in basso: lì ci vivono già il titolo "ATOMIC BEER"
+   (a sinistra) e il pulsante (a destra), e l'avviso ci finiva sopra.
+   Il minimo di 4.25rem lo tiene sotto la TopBar (alta ~47px sul mobile) anche
+   quando 12vh sarebbe troppo poco, cioè in landscape. */
 .hint {
   position: fixed;
-  left: clamp(1rem, 5vw, 2rem);
-  right: calc(clamp(1rem, 5vw, 2rem) + 4rem); /* non finisce sotto il pulsante */
-  bottom: clamp(1.5rem, 6.5vw, 2.9rem);
+  top: calc(env(safe-area-inset-top, 0px) + clamp(4.25rem, 12vh, 6.5rem));
+  left: 50%;
   z-index: 40;
 
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  align-items: center;
+  gap: 0.2rem;
+  max-width: min(88vw, 24rem);
+  padding: 0.55rem 0.95rem;
 
   font-family: var(--font-mono, ui-monospace, monospace);
+  text-align: center;
   text-transform: uppercase;
+  text-wrap: balance;
   pointer-events: none;
 
+  /* fondo proprio: l'avviso sta sopra il campo stellare e il logo cromato,
+     senza non sarebbe leggibile in tutte le pose */
+  background: rgba(8, 8, 8, 0.72);
+  border: 1px solid rgba(255, 217, 31, 0.28);
+  border-radius: 0.7rem;
+  backdrop-filter: blur(8px);
+
   opacity: 0;
-  transition: opacity 0.35s ease;
+  transform: translate(-50%, -0.45rem);
+  transition:
+    opacity 0.35s ease,
+    transform 0.35s ease;
 }
 
 .hintVisible {
   opacity: 1;
+  transform: translate(-50%, 0);
 }
 
 .hintTitle {
@@ -101,8 +120,9 @@
 
 .hintBody {
   font-size: 0.6rem;
-  letter-spacing: 0.1em;
-  color: rgba(242, 242, 242, 0.62);
+  letter-spacing: 0.08em;
+  line-height: 1.35;
+  color: rgba(242, 242, 242, 0.72);
 }
 
 .srOnly {
