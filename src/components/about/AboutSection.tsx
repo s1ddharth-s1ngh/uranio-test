@@ -10,6 +10,7 @@ import {
 } from "framer-motion";
 import { AboutBottle } from "./AboutBottle";
 import { AboutEye } from "./AboutEye";
+import { AboutStonks } from "./AboutStonks";
 import { usePrefersReducedMotion } from "../../hooks/usePrefersReducedMotion";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useIsTouch } from "../../hooks/useIsTouch";
@@ -113,6 +114,13 @@ export default function AboutSection() {
                   scale={[5, 3, 1]}
                 />
               </Environment>
+              {/* cascata di stonks specchiati che scendono a sinistra durante lo scroll */}
+              <AboutStonks
+                progress={progress}
+                reduceMotion={reduceMotion}
+                narrow={narrow}
+                touch={isTouch}
+              />
               {/* bottiglia centrale che guida lo scrollytelling */}
               <AboutBottle
                 progress={progress}
