@@ -125,6 +125,8 @@ export function AboutArc({ ref, breakpoint, reduceMotion }: AboutArcProps) {
             }}
             className={styles.letter}
           >
+            {/* spazio unificatore: in reduced motion le lettere tornano in
+                flusso e uno spazio normale collasserebbe, attaccando le parole */}
             {ch === " " ? " " : ch}
           </span>
         </span>

@@ -11,10 +11,41 @@
   background: var(--bg, #050505);
 }
 
-/* con reduced-motion niente scrollytelling: sezione singola statica */
+/* --- REDUCED MOTION ------------------------------------------------------
+   Niente pin e niente coreografia: la sezione torna a essere un pezzo di
+   documento che scorre normalmente. Tutti i contenuti restano, in ordine di
+   lettura (titolo, prodotto, messaggio, schede) — nessuno di essi dipende
+   dall'animazione per essere raggiungibile. Impilare gli stessi elementi in
+   una schermata sola li avrebbe fatti sovrapporre. */
 .wrapperStatic {
-  height: 100vh;
-  height: 100svh;
+  height: auto;
+}
+
+.wrapperStatic .sticky {
+  position: static;
+  height: auto;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(2rem, 5vh, 3.5rem);
+  padding: clamp(3rem, 8vh, 5rem) 0;
+}
+
+.wrapperStatic .canvas {
+  position: relative;
+  inset: auto;
+  order: 2;
+  height: 52vh;
+  height: 52svh;
+}
+
+.wrapperStatic .intro {
+  position: static;
+  order: 1;
+  width: auto;
+  margin: 0 auto;
+  padding: 0 6vw;
+  max-width: 46ch;
 }
 
 /* Il palco: resta agganciato per tutta la timeline. `clip` (non hidden) non
@@ -94,8 +125,6 @@
    timeline non scrive nessun transform (vedi il ramo in AboutSection.tsx). */
 @media (prefers-reduced-motion: reduce) {
   .intro {
-    top: auto;
-    bottom: 6vh;
     opacity: 1;
     transform: none;
     will-change: auto;

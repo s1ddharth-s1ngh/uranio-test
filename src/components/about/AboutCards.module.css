@@ -69,9 +69,8 @@
    Nessuna corsa: le card diventano una griglia leggibile e ferma. Il
    contenuto non deve MAI dipendere dall'animazione per essere raggiungibile. */
 .listStatic {
-  position: absolute;
-  inset: auto 0 5vh;
-  z-index: 6;
+  position: static;
+  order: 4; /* ultimo blocco della colonna: vedi .wrapperStatic .sticky */
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
   gap: 1rem;
