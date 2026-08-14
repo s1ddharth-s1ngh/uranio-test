@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { useLocation } from "react-router-dom";
-import { useInView } from "framer-motion";
+import { motion, useInView, useScroll, useTransform } from "framer-motion";
 import Loader from "../components/Loader";
 import TopBar from "../components/TopBar";
 import InteractiveText from "../components/InteractiveText";
@@ -10,6 +11,7 @@ import HeroLock from "../components/ui/HeroLock";
 import { usePrefersReducedMotion } from "../hooks/usePrefersReducedMotion";
 import { useIsTouch } from "../hooks/useIsTouch";
 import { useHeroLock } from "../hooks/useHeroLock";
+import { ABOUT_FADE, HERO_FADE, HERO_OVERLAP } from "../lib/heroTransition";
 import styles from "./Home.module.css";
 
 // Le scene WebGL (three + R3F) vivono in chunk separati: la home shell e
@@ -29,6 +31,24 @@ export default function Home() {
   // pausa del canvas hero quando è scrollato fuori vista
   const heroRef = useRef<HTMLElement>(null);
   const heroInView = useInView(heroRef, { margin: "200px 0px 200px 0px" });
+
+  // TRANSIZIONE HERO → "CHI SIAMO". Progresso 0..1 = quanta parte di una
+  // schermata è stata scrollata dentro l'hero (l'hero è alto 100svh, quindi
+  // 1 = una schermata piena). Tutto è funzione della posizione di scroll, non
+  // del verso: risalendo la transizione si riavvolge identica.
+  const { scrollYProgress: heroScroll } = useScroll({
+    target: heroRef,
+    offset: ["start start", "end start"],
+  });
+  const heroOpacity = useTransform(heroScroll, HERO_FADE, [1, 0]);
+  // svanito = trasparente ai click, se no la sua ultima striscia (invisibile,
+  // ma sopra per z-index) ruberebbe il puntatore al canvas della sezione 2
+  const heroEvents = useTransform(
+    heroScroll,
+    (v): CSSProperties["pointerEvents"] =>
+      v >= HERO_FADE[1] ? "none" : "auto",
+  );
+  const aboutOpacity = useTransform(heroScroll, ABOUT_FADE, [0, 1]);
 
   // Senza hover il gesto del dito non può essere insieme scroll e interazione:
   // nella prima sezione lo scroll è bloccato e il dito pilota il logo 3D, si
@@ -51,18 +71,34 @@ export default function Home() {
   }, [pathname]);
 
   return (
-    <div className={styles.page}>
+    <div
+      className={styles.page}
+      style={
+        {
+          // sovrapposizione tra le due sezioni: la consuma il margine
+          // negativo dell'hero (Home.module.css). Con reduced-motion le
+          // sezioni restano separate, senza dissolvenze da nascondere
+          "--hero-overlap": reduceMotion ? "0px" : `${HERO_OVERLAP * 100}svh`,
+        } as CSSProperties
+      }
+    >
       <Loader onRevealStart={() => setRevealed(true)} />
       <TopBar revealed={revealed} />
       {/* soglia unica pill/cursore: INVERT_TRIGGER in InvertCursor.tsx */}
       <InvertCursor sectionId="about" />
 
       <main>
-        {/* HERO: sezione alta 100vh che scorre via normalmente */}
-        <section
+        {/* HERO: alta 100vh, ma ne consuma solo (1 - HERO_OVERLAP) di scroll:
+            svanisce mentre la sezione sotto sale e prende posizione */}
+        <motion.section
           ref={heroRef}
           id="hero"
           className={`${styles.hero} ${locked ? styles.heroLocked : ""}`}
+          style={
+            reduceMotion
+              ? undefined
+              : { opacity: heroOpacity, pointerEvents: heroEvents }
+          }
         >
           <div
             className={`${styles.scene} ${revealed ? styles.sceneRevealed : ""}`}
@@ -95,12 +131,16 @@ export default function Home() {
           {isTouch ? null : (
             <ScrollPill label={PILL_LABEL} revealed={revealed} />
           )}
-        </section>
+        </motion.section>
 
-        {/* CHI SIAMO: scrollytelling con canvas pinnato */}
-        <Suspense fallback={null}>
-          <AboutSection />
-        </Suspense>
+        {/* CHI SIAMO: scrollytelling con canvas pinnato. Sale di HERO_OVERLAP
+            sotto l'hero, quindi si aggancia in cima prima che l'hero finisca;
+            la dissolvenza in entrata evita che da fermi faccia capolino */}
+        <motion.div style={reduceMotion ? undefined : { opacity: aboutOpacity }}>
+          <Suspense fallback={null}>
+            <AboutSection />
+          </Suspense>
+        </motion.div>
       </main>
 
       {isTouch && (

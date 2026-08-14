@@ -3,6 +3,10 @@
    420vh più veloce, 540vh più lento) */
 .wrapper {
   position: relative;
+  /* sotto l'hero (z-index 2), che negli ultimi 20vh le scorre sopra mentre
+     svanisce. Serve anche a contenere qui dentro lo z-index del testo (10),
+     che altrimenti competerebbe con l'hero */
+  z-index: 1;
   height: 480vh;
   background: var(--bg, #050505);
 }

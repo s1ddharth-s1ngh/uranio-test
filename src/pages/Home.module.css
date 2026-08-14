@@ -25,13 +25,19 @@
   color: #050505;
 }
 
-/* hero: 100vh, scorre via normalmente; il clip contiene lettere e pill.
+/* hero: visivamente 100vh, ma consuma meno scroll di così. Il margine
+   negativo (--hero-overlap, impostata da Home.tsx: unica fonte di verità con
+   la dissolvenza) tira su la sezione successiva, che quindi si aggancia in
+   cima PRIMA che l'hero sia finito. z-index 2: l'hero passa sopra e se ne va
+   svanendo, invece di essere tagliato dal bordo della sezione che sale.
    svh (non dvh): l'altezza NON cambia quando le barre del browser mobile
    collassano durante lo scroll — niente salti di layout */
 .hero {
   position: relative;
+  z-index: 2;
   height: 100vh;
   height: 100svh;
+  margin-bottom: calc(-1 * var(--hero-overlap, 0px));
   overflow: clip;
 }
 
