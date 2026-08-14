@@ -240,9 +240,14 @@ const DESKTOP: AboutConfig = {
     // la quota di hovering tiene conto dell'INCLINAZIONE: un disco largo
     // quanto la corona, inclinato di ~27°, abbassa il proprio bordo di
     // parecchio. A 0.075 il fondo sfiorava ancora la bocca.
-    hover: [0.165, 0.098, 0.05],
-    returnLift: [0.004, 0.055, 0.01],
-    returnApex: [0.09, 0.125, 0.03],
+    // Più di lato che in alto: sopra la bocca passa il corridoio delle card, e
+    // il tappo sta DAVANTI a loro (canvas sopra), quindi lassù taglierebbe il
+    // testo. Spostandolo di fianco esce dal corridoio e resta comunque
+    // chiaramente staccato — la gonna è fuori dal raggio della bocca, per cui
+    // può stare anche più in basso senza toccare il vetro.
+    hover: [0.24, 0.055, 0.05],
+    returnLift: [0.004, 0.04, 0.01],
+    returnApex: [0.12, 0.1, 0.03],
     spinTurns: 1.25,
     contentSpinTurns: 0.35,
     // +X inclina la cupola verso la camera (+Z): la faccia stampata resta
@@ -255,7 +260,10 @@ const DESKTOP: AboutConfig = {
   capPointer: { shift: 0.075, tilt: 0.16 },
   contentYaw: 0.28,
   cardOverlap: 0.34,
-  cards: { enterX: 58, exitX: -58, apexY: -26, edgeY: -12, tiltAmp: 5 },
+  // L'arco passa SOPRA il tappo in hovering: le card stanno dietro il canvas,
+  // quindi è il tappo a coprirle, e a quote più basse taglierebbe il testo in
+  // due proprio mentre lo si legge (verificato con un test di sovrapposizione).
+  cards: { enterX: 58, exitX: -58, apexY: -30, edgeY: -16, tiltAmp: 5 },
   arc: { rx: 0.42, ry: 0.2, cy: 0.4, fontVw: 3.6 },
 };
 
@@ -271,14 +279,14 @@ const TABLET: AboutConfig = {
     // arco più contenuto: meno larghezza disponibile ai lati del collo
     lift: [0.004, 0.095, 0.01],
     apex: [0.095, 0.195, 0.04],
-    hover: [0.13, 0.098, 0.042],
-    returnLift: [0.003, 0.05, 0.008],
-    returnApex: [0.07, 0.125, 0.025],
+    hover: [0.2, 0.055, 0.042],
+    returnLift: [0.003, 0.04, 0.008],
+    returnApex: [0.1, 0.1, 0.025],
   },
   capPointer: { shift: 0.055, tilt: 0.13 },
   contentYaw: 0.22,
   cardOverlap: 0.22,
-  cards: { enterX: 64, exitX: -64, apexY: -24, edgeY: -10, tiltAmp: 4 },
+  cards: { enterX: 64, exitX: -64, apexY: -29, edgeY: -15, tiltAmp: 4 },
   arc: { rx: 0.44, ry: 0.19, cy: 0.4, fontVw: 5 },
 };
 
@@ -294,9 +302,11 @@ const MOBILE: AboutConfig = {
     side: -1,
     lift: [0.003, 0.1, 0.008],
     apex: [0.055, 0.2, 0.028],
-    hover: [0.085, 0.115, 0.032],
-    returnLift: [0.002, 0.055, 0.006],
-    returnApex: [0.04, 0.135, 0.02],
+    // su mobile la bottiglia è più piccola, quindi in unità di altezza serve
+    // più lateralità perché i due corpi non possano proprio toccarsi
+    hover: [0.185, 0.07, 0.032],
+    returnLift: [0.002, 0.045, 0.006],
+    returnApex: [0.09, 0.11, 0.02],
     spinTurns: 1.25,
     contentSpinTurns: 0.35,
     hoverTiltX: 0.36,
@@ -306,9 +316,13 @@ const MOBILE: AboutConfig = {
   pointer: { yaw: 0, pitch: 0, roll: 0, shiftX: 0 },
   capPointer: { shift: 0, tilt: 0 },
   contentYaw: 0.16,
-  cardOverlap: 0, // una card alla volta
+  // Una card alla volta, ma non zero: a finestre esattamente adiacenti si
+  // aprirebbe un istante di palco vuoto al cambio. Con 0.14 le due card si
+  // incrociano ai bordi opposti dello schermo, entrambe sotto la soglia di
+  // leggibilità — si legge comunque una sola card per volta.
+  cardOverlap: 0.14,
   // arco più piatto e più centrale: di lato non c'è spazio, e la card è larga
-  cards: { enterX: 78, exitX: -78, apexY: -21, edgeY: -9, tiltAmp: 3 },
+  cards: { enterX: 78, exitX: -78, apexY: -25, edgeY: -13, tiltAmp: 3 },
   arc: { rx: 0.46, ry: 0.17, cy: 0.42, fontVw: 8.5 },
 };
 
@@ -438,6 +452,17 @@ export interface CapPose {
    * che rende l'ultimo tratto del rientro pulito.
    */
   orient: number;
+  /**
+   * Peso del "gioco" del tappo: respiro autonomo e risposta al cursore. Vale 1
+   * solo nel plateau in cui è parcheggiato in hovering, e 0 durante volo,
+   * ritorno e riaggancio.
+   *
+   * Non basta pesarli con `orient`: a metà rientro vale ancora ~0.7, e bob e
+   * cursore spingono il tappo in basso e verso l'asse proprio mentre passa
+   * accanto al collo — cioè dentro il vetro. E comunque, mentre vola, il tappo
+   * deve seguire la coreografia, non ciondolare.
+   */
+  play: number;
   /** inclinazione assoluta verso cui interpolare (rad) */
   tiltX: number;
   tiltZ: number;
@@ -450,6 +475,7 @@ export function makeCapPose(): CapPose {
     offset: { x: 0, y: 0, z: 0 },
     openness: 0,
     orient: 0,
+    play: 0,
     tiltX: 0,
     tiltZ: 0,
     spin: 0,
@@ -563,6 +589,12 @@ export function computeCapPose(
   // verificato headless che con 1.8 la penetrazione durante il rientro resta
   // sotto quella della posa chiusa di progetto
   out.orient = Math.pow(openness, 1.8);
+  out.play = keyframes(p, [
+    [PHASES.opening.e - 0.03, 0],
+    [PHASES.opening.e, 1],
+    [PHASES.returning.s, 1],
+    [PHASES.returning.s + 0.04, 0],
+  ]);
   return out;
 }
 
@@ -613,6 +645,114 @@ export function computeIntroPose(p: number, out: DomPose): DomPose {
 }
 
 /**
+ * Altezza del viewport in unità mondo con la camera della sezione
+ * (fov 40 a z 6, vedi AboutSection.tsx). Serve a convertire le quote 3D del
+ * tappo in unità di viewport, per tenerci lontane le card.
+ */
+export const CAMERA_VIEW_HEIGHT = 2 * 6 * Math.tan((40 / 2) * (Math.PI / 180));
+
+export interface CapScreenBox {
+  /** centro in vw / vh dal centro schermo (y positiva verso il basso) */
+  x: number;
+  y: number;
+  halfW: number;
+  halfH: number;
+}
+
+export function makeCapScreenBox(): CapScreenBox {
+  return { x: 0, y: 0, halfW: 0, halfH: 0 };
+}
+
+/**
+ * Dove finisce il tappo in hovering, in unità di viewport. È la stessa
+ * matematica dell'inquadratura, riletta in coordinate schermo: le card ne
+ * hanno bisogno perché passano DIETRO il canvas, quindi è il tappo a coprirle
+ * e se ci finisce sopra taglia il testo in due.
+ */
+export function capHoverScreen(
+  cfg: AboutConfig,
+  aspect: number,
+  bottleHeight: number,
+  capRadius: number,
+  capHeight: number,
+  out: CapScreenBox,
+): CapScreenBox {
+  const viewH = CAMERA_VIEW_HEIGHT;
+  const viewW = viewH * aspect;
+  const fr = cfg.framing.middle;
+  const scale = (fr.visibleRatio * viewH) / ((1 - fr.hidden) * bottleHeight);
+  // bordo alto della bottiglia = bocca, da cui si misura l'offset di hovering
+  const mouthY = -viewH / 2 + fr.visibleRatio * viewH;
+
+  const worldX = cfg.cap.hover[0] * bottleHeight * scale * cfg.cap.side;
+  const worldY = mouthY + cfg.cap.hover[1] * bottleHeight * scale;
+  const r = capRadius * scale;
+
+  out.x = (worldX / viewW) * 100;
+  out.y = -(worldY / viewH) * 100; // schermo: y positiva verso il basso
+  out.halfW = (r / viewW) * 100;
+  // disco inclinato: l'ingombro verticale è il raggio proiettato più mezzo
+  // spessore, molto meno del diametro
+  out.halfH =
+    ((r * Math.sin(cfg.cap.hoverTiltX) + (capHeight * scale) / 2) / viewH) * 100;
+  return out;
+}
+
+const _liftPose = makeDomPose();
+const FULL_SPAN: Span = { s: 0, e: 1 };
+
+/**
+ * Di quanto va alzato l'arco delle card perché il loro bordo inferiore resti
+ * sopra il tappo. Sempre ≤ 0: l'arco si alza, non si abbassa.
+ *
+ * La quota si trova campionando la CURVA, non i punti di controllo: una
+ * Bézier cubica non passa mai per P1 e P2, quindi il suo punto più alto sta
+ * parecchio sotto `apexY` — dimensionare sull'apice lascerebbe scoperta
+ * proprio la parte di corsa in cui la card incrocia il tappo.
+ *
+ * Si guardano solo i campioni in cui la card è LEGGIBILE e si sovrappone al
+ * tappo in orizzontale: quando è ancora a destra dello schermo la sua quota
+ * non interessa nessuno.
+ */
+export function cardArcLift(
+  cfg: AboutConfig,
+  cap: CapScreenBox,
+  cardHalfH: number,
+  cardHalfW: number,
+  /** corsia più bassa: è quella che rischia di finire sotto il tappo */
+  maxLane = 0.02,
+  /** corsia più alta: è quella che rischia di uscire dal bordo superiore */
+  minLane = -0.02,
+  margin = 2,
+): number {
+  let worstBottom = -Infinity;
+  for (let t = 0; t <= 1; t += 0.005) {
+    computeCardPose(t, FULL_SPAN, maxLane, 0, cfg, 0, _liftPose);
+    if (_liftPose.opacity < 0.5) continue;
+    if (Math.abs(_liftPose.x - cap.x) >= cardHalfW + cap.halfW) continue;
+    const bottom = _liftPose.y + cardHalfH;
+    if (bottom > worstBottom) worstBottom = bottom;
+  }
+  if (worstBottom === -Infinity) return 0; // non si incrociano mai
+
+  const lift = Math.min(0, cap.y - cap.halfH - margin - worstBottom);
+
+  // Il bordo alto non deve uscire dallo schermo. Su viewport molto basse la
+  // card, in vh, è più alta e le due cose non possono stare entrambe: in quel
+  // caso vince il restare in campo, e il tappo passerà dietro un angolo.
+  // qui serve la corsia PIÙ ALTA: l'alzata è unica per tutte le card, quindi
+  // va limitata da quella che arriva più vicina al bordo
+  let highest = Infinity;
+  for (let t = 0; t <= 1; t += 0.005) {
+    computeCardPose(t, FULL_SPAN, minLane, 0, cfg, 0, _liftPose);
+    if (_liftPose.opacity < 0.5) continue;
+    highest = Math.min(highest, _liftPose.y - cardHalfH);
+  }
+  const topRoom = highest === Infinity ? 0 : Math.min(0, -48 - highest);
+  return Math.max(lift, topRoom);
+}
+
+/**
  * Finestra di progresso della card `i`.
  *
  * Le finestre sono lunghe `stride * (1 + overlap)` e distanziate di `stride`:
@@ -648,11 +788,13 @@ export function computeCardPose(
   lane: number,
   tilt: number,
   cfg: AboutConfig,
+  /** alzata dell'arco per scavalcare il tappo, da cardArcLift (≤ 0) */
+  lift: number,
   out: DomPose,
 ): DomPose {
   const t = phase(p, win);
   const c = cfg.cards;
-  const laneY = lane * 100;
+  const laneY = lane * 100 + lift;
 
   // arco a campana: entra e esce basso, passa alto in mezzo
   _cp0[0] = c.enterX;

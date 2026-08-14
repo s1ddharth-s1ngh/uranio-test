@@ -172,28 +172,31 @@ export function AboutBottle({
     rig.quaternion.slerpQuaternions(_quat, _hoverQuat, ow);
     spin.rotation.y = pose.spin;
 
-    // --- offset additivi: vivi solo da staccato, si spengono da soli --------
-    // pesati anche loro da `orient`, per lo stesso motivo: a fine rientro il
-    // gioco radiale è di millesimi e non tollera né bob né cursore.
+    // --- offset additivi: vivi solo mentre è parcheggiato in hovering -------
+    // Pesati da `play`, non da `orient`: a metà rientro `orient` vale ancora
+    // ~0.7, e bob e cursore spingerebbero il tappo in basso e verso l'asse
+    // proprio mentre sfila accanto al collo. E mentre vola deve seguire la
+    // coreografia, non ciondolare.
+    const pl = pose.play;
     const W = asm.world;
     // respiro del tappo: più mosso di quello del corpo e su altre frequenze,
     // così i due non oscillano mai in fase
     offset.position.set(
-      Math.sin(t * 0.61 + 1.9) * 0.010 * W.bottleHeight * ow + capPX.current,
-      Math.sin(t * 0.83 + 0.4) * 0.018 * W.bottleHeight * ow + capPY.current,
+      Math.sin(t * 0.61 + 1.9) * 0.010 * W.bottleHeight * pl + capPX.current,
+      Math.sin(t * 0.83 + 0.4) * 0.018 * W.bottleHeight * pl + capPY.current,
       0,
     );
     // la deriva lenta sull'asse è un'oscillazione ampia e lentissima (~57 s di
     // periodo): si legge come inerzia, non come un loop
     offset.rotation.set(
-      Math.sin(t * 0.53) * 0.10 * ow + capRX.current,
-      Math.sin(t * 0.11) * 0.5 * ow,
-      Math.cos(t * 0.37 + 0.9) * 0.08 * ow + capRZ.current,
+      Math.sin(t * 0.53) * 0.10 * pl + capRX.current,
+      Math.sin(t * 0.11) * 0.5 * pl,
+      Math.cos(t * 0.37 + 0.9) * 0.08 * pl + capRZ.current,
     );
 
     // risposta al cursore: più pronta della bottiglia (λ=7) ma sempre
-    // smorzata, e pesata da `orient` così in riaggancio si azzera da sola
-    const pw = touch ? 0 : ow;
+    // smorzata, e pesata da `play` così durante il rientro si azzera da sola
+    const pw = touch ? 0 : pl;
     const k = dampFactor(7, dt);
     const px = clampAbs(pointer.x, 1);
     const py = clampAbs(pointer.y, 1);

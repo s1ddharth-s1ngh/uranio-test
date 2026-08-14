@@ -29,7 +29,7 @@ export const ABOUT_CARDS: readonly AboutCard[] = [
     index: "01",
     title: "Materia prima",
     body: "Zenzero fresco spremuto a freddo e acqua di sorgente. Nessun aroma, nessun concentrato: solo la radice, intera.",
-    lane: -0.04,
+    lane: -0.012,
     tilt: -3.5,
   },
   {
@@ -37,7 +37,7 @@ export const ABOUT_CARDS: readonly AboutCard[] = [
     index: "02",
     title: "Fissione lenta",
     body: "Ottanta giorni di fermentazione a bassa temperatura. Il tempo è l'unico ingrediente che non si può accelerare.",
-    lane: 0.05,
+    lane: 0.015,
     tilt: 2.5,
   },
   {
@@ -45,7 +45,7 @@ export const ABOUT_CARDS: readonly AboutCard[] = [
     index: "03",
     title: "Massa critica",
     body: "Cinque spezie che si innescano a vicenda: pepe lungo, cardamomo, lime, vaniglia bourbon e un soffio di sale.",
-    lane: -0.02,
+    lane: -0.008,
     tilt: 3,
   },
   {
@@ -53,7 +53,7 @@ export const ABOUT_CARDS: readonly AboutCard[] = [
     index: "04",
     title: "Filiera corta",
     body: "Radici coltivate entro cento chilometri dal birrificio. Ogni lotto porta in etichetta il campo da cui viene.",
-    lane: 0.06,
+    lane: 0.018,
     tilt: -2,
   },
 ] as const;
