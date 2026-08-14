@@ -1,13 +1,13 @@
-/* wrapper alto: lo scroll attraverso questa altezza guida la timeline.
-   Più alto = stessa rotazione su più scroll = giri più lenti (taratura:
-   420vh più veloce, 540vh più lento) */
+/* Wrapper alto: lo scroll attraverso questa altezza guida tutta la timeline.
+   L'altezza NON sta qui ma in CONFIG[breakpoint].pinVh (aboutTimeline.ts),
+   passata come --pin da AboutSection.tsx: unica fonte di verità, così il
+   ritmo della narrazione e la sua lunghezza si tarano nello stesso posto.
+   Doppia dichiarazione per il fallback: svh non cambia quando le barre del
+   browser mobile collassano durante lo scroll (niente salti di layout). */
 .wrapper {
   position: relative;
-  /* sotto l'hero (z-index 2), che negli ultimi 20vh le scorre sopra mentre
-     svanisce. Serve anche a contenere qui dentro lo z-index del testo (10),
-     che altrimenti competerebbe con l'hero */
-  z-index: 1;
-  height: 480vh;
+  height: calc(var(--pin, 700) * 1vh);
+  height: calc(var(--pin, 700) * 1svh);
   background: var(--bg, #050505);
 }
 
@@ -17,7 +17,10 @@
   height: 100svh;
 }
 
-/* svh: altezza stabile durante lo scroll (vedi .hero in Home.module.css) */
+/* Il palco: resta agganciato per tutta la timeline. `clip` (non hidden) non
+   crea uno scroll container, quindi non rompe lo sticky né introduce scroll
+   annidati; è anche ciò che nasconde la metà inferiore della bottiglia, che
+   resta intera nella geometria. */
 .sticky {
   position: sticky;
   top: 0;
@@ -29,100 +32,123 @@
 .canvas {
   position: absolute;
   inset: 0;
-}
-
-/* colonna testo: il centraggio sta QUI, la y animata sta sul div interno.
-   Più larga e più lontana dal bordo destro: si estende verso il centro */
-.textCol {
-  position: absolute;
-  right: 12vw;
-  top: 50%;
-  transform: translateY(-50%);
-  width: min(44ch, 40vw);
-  z-index: 10;
+  /* il canvas non deve rubare click né gesti di scroll: è decorativo */
   pointer-events: none;
+  touch-action: pan-y;
 }
 
-.text h2 {
-  margin: 0 0 1.4rem;
-  font-size: clamp(2.6rem, 5vw, 5rem);
+/* --- INTRO ---------------------------------------------------------------
+   Titolo e sottotitolo in alto, sopra il collo della bottiglia: la fascia
+   centrale-bassa è occupata dal prodotto, quella alta è libera.
+   Il transform lo scrive la timeline (applyDomPose): qui solo il layout. */
+.intro {
+  position: absolute;
+  top: clamp(4.5rem, 12vh, 9rem);
+  left: 50%;
+  width: min(46ch, 78vw);
+  /* il centraggio sta nel margine, non nel transform: quello è della
+     timeline, e due scrittori sulla stessa proprietà si sovrascrivono */
+  margin-left: min(-23ch, -39vw);
+  z-index: 10;
+  text-align: center;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+.eyebrow {
+  margin: 0 0 0.9rem;
+  font-size: clamp(0.7rem, 0.9vw, 0.82rem);
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-accent, #3ebedb);
+}
+
+.title {
+  margin: 0 0 1rem;
+  font-size: clamp(2.4rem, 5.6vw, 5.4rem);
   font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1.05;
+  letter-spacing: -0.025em;
+  line-height: 1;
   color: var(--fg, #f2f2f2);
 }
 
-.text p {
-  margin: 0;
-  font-size: clamp(1.15rem, 1.5vw, 1.45rem);
-  line-height: 1.65;
+.subtitle {
+  margin: 0 auto;
+  max-width: 34ch;
+  font-size: clamp(1rem, 1.35vw, 1.3rem);
+  line-height: 1.55;
   color: var(--fg-muted, #9c9c9c);
-  opacity: 0.95;
 }
 
-/* impilato (modello sopra, testo sotto): telefoni e tablet in portrait —
-   in landscape resta l'affiancato (compattato dalla query più sotto).
-   Il ramo (hover: none) copre i tablet ≥1024px in portrait (iPad Pro).
-   Stessa query di `narrow` in AboutSection.tsx: tenerle allineate */
+/* testo per i soli screen reader: descrive ciò che il canvas mostra */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* --- REDUCED MOTION ------------------------------------------------------
+   Niente pin, niente coreografia: l'intro resta ferma e leggibile, e la
+   timeline non scrive nessun transform (vedi il ramo in AboutSection.tsx). */
+@media (prefers-reduced-motion: reduce) {
+  .intro {
+    top: auto;
+    bottom: 6vh;
+    opacity: 1;
+    transform: none;
+    will-change: auto;
+  }
+}
+
+/* portrait di telefoni e tablet: l'intro si stringe e sale di poco, il collo
+   della bottiglia resta sotto. Stessa query di `narrow` in AboutSection.tsx */
 @media (orientation: portrait) and (max-width: 1032px),
   (orientation: portrait) and (hover: none) {
-  /* sezione più corta: stessi giri, meno scroll col pollice */
-  .wrapper {
-    height: 340vh;
+  .intro {
+    top: clamp(3.5rem, 9vh, 6rem);
+    width: 86vw;
+    margin-left: -43vw;
   }
 
-  .wrapperStatic {
-    height: 100vh;
-    height: 100svh;
+  .title {
+    font-size: clamp(1.9rem, 8.5vw, 3rem);
   }
 
-  /* testo a larghezza piena in basso (niente left:50% + width auto: da
-     absolute andrebbe in shrink-to-fit contro la mezza viewport destra) */
-  .textCol {
-    left: 0;
-    right: 0;
-    top: auto;
-    bottom: 4vh;
-    bottom: 4dvh;
-    width: auto;
-    max-width: none;
-    transform: none;
-    padding: 0 6vw;
-    text-align: center;
-  }
-
-  .text {
-    margin: 0 auto;
-    max-width: 60ch;
-  }
-
-  .text h2 {
-    margin-bottom: 0.9rem;
-    font-size: clamp(1.7rem, 7vw, 2.6rem);
-  }
-
-  .text p {
-    font-size: clamp(0.95rem, 3.8vw, 1.1rem);
-    line-height: 1.5;
+  .subtitle {
+    max-width: 28ch;
+    font-size: clamp(0.92rem, 3.9vw, 1.05rem);
+    line-height: 1.45;
   }
 }
 
-/* telefoni in landscape (viewport bassa): colonna affiancata più larga e
-   tipografia compatta, così il blocco sta nei ~390px di altezza.
+/* telefoni in landscape (viewport bassa): tipografia compatta, così l'intro
+   non invade il collo nei ~390px di altezza disponibili.
    (hover: none): una finestra desktop bassa col mouse NON deve cambiare */
 @media (orientation: landscape) and (max-height: 500px) and (hover: none) {
-  .textCol {
-    right: 5vw;
-    width: min(52ch, 46vw);
+  .intro {
+    top: 2.5vh;
+    width: 70vw;
+    margin-left: -35vw;
   }
 
-  .text h2 {
-    margin-bottom: 0.6rem;
-    font-size: clamp(1.4rem, 4vh, 1.9rem);
+  .eyebrow {
+    margin-bottom: 0.4rem;
   }
 
-  .text p {
-    font-size: clamp(0.85rem, 3.4vh, 1rem);
-    line-height: 1.45;
+  .title {
+    margin-bottom: 0.4rem;
+    font-size: clamp(1.4rem, 5vh, 2rem);
+  }
+
+  .subtitle {
+    font-size: clamp(0.82rem, 3.2vh, 0.95rem);
+    line-height: 1.4;
   }
 }

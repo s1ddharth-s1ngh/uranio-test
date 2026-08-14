@@ -545,6 +545,52 @@ export function computeCapPose(
   return out;
 }
 
+// --- OVERLAY IN DOM ------------------------------------------------------
+
+/** posa di un elemento in overlay: si scrive su style, mai su React state */
+export interface DomPose {
+  opacity: number;
+  /** in unità di viewport (vw / vh) */
+  x: number;
+  y: number;
+  rot: number;
+  scale: number;
+}
+
+export function makeDomPose(): DomPose {
+  return { opacity: 0, x: 0, y: 0, rot: 0, scale: 1 };
+}
+
+/** lo scrive in una stringa transform, senza toccare top/left */
+export function applyDomPose(el: HTMLElement, pose: DomPose): void {
+  el.style.opacity = pose.opacity.toFixed(3);
+  el.style.transform =
+    `translate3d(${pose.x.toFixed(3)}vw, ${pose.y.toFixed(3)}vh, 0) ` +
+    `rotate(${pose.rot.toFixed(2)}deg) scale(${pose.scale.toFixed(4)})`;
+  // fuori scena non deve intercettare nulla né costare compositing
+  el.style.visibility = pose.opacity < 0.004 ? "hidden" : "visible";
+}
+
+/**
+ * Titolo e sottotitolo: entrano dal basso, si assestano, e prima delle card
+ * escono a sinistra su una piccola curva invece di sparire di colpo.
+ */
+export function computeIntroPose(p: number, out: DomPose): DomPose {
+  const enter = easeOutCubic(phase(p, PHASES.intro));
+  // esce a cavallo dell'inizio delle card, così i due movimenti si passano
+  // il testimone senza un istante di vuoto
+  const exit = easeInCubic(
+    phase(p, { s: PHASES.content.s - 0.05, e: PHASES.content.s + 0.05 }),
+  );
+  out.opacity = enter * (1 - exit);
+  // l'uscita è un arco: mentre va a sinistra sale appena e ruota di poco
+  out.x = -exit * 16;
+  out.y = (1 - enter) * 3.2 - exit * 2.4;
+  out.rot = -exit * 3.5;
+  out.scale = 0.98 + enter * 0.02 - exit * 0.03;
+  return out;
+}
+
 // --- NOTA TECNICA --------------------------------------------------------
 // Dove mettere le mani:
 //   • ritmo della narrazione        → PHASES
