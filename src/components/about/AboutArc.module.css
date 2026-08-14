@@ -1,0 +1,59 @@
+/* Messaggio finale disposto su un arco ellittico: il culmine tipografico
+   della sezione. Sta DAVANTI al canvas — è il momento in cui il testo, non il
+   prodotto, deve prendersi la scena — ma resta alto, sopra il collo, così la
+   bottiglia continua a leggersi sotto. */
+
+.arc {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  pointer-events: none;
+}
+
+/* posa STATICA sull'arco: posizione e tangente, scritte una volta e rifatte
+   solo al resize (vedi AboutArc.tsx). Qui non arriva mai la timeline. */
+.slot {
+  position: absolute;
+  display: block;
+  will-change: transform;
+}
+
+/* posa ANIMATA: opacità e scivolamento da destra, sfasati per lettera */
+.letter {
+  display: block;
+  font-size: var(--arc-font, 3.4vw);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  color: var(--fg, #f2f2f2);
+  /* un filo di ombra: le lettere passano sopra il vetro della bottiglia */
+  text-shadow: 0 0.15em 0.6em rgb(0 0 0 / 0.55);
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+/* --- REDUCED MOTION ------------------------------------------------------
+   Niente arco né entrata: una riga sola, ferma e leggibile. Le lettere
+   tornano in flusso, quindi la frase si legge normalmente anche a video. */
+.arcStatic {
+  inset: auto 0 18vh;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  padding: 0 6vw;
+}
+
+.arcStatic .slot {
+  position: static;
+  transform: none !important;
+  will-change: auto;
+}
+
+.arcStatic .letter {
+  font-size: clamp(1.5rem, 5vw, 2.6rem);
+  opacity: 1;
+  transform: none;
+  text-shadow: none;
+  will-change: auto;
+}

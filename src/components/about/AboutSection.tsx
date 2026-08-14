@@ -6,6 +6,8 @@ import { AboutBottle } from "./AboutBottle";
 import { AboutStonks } from "./AboutStonks";
 import { AboutCards } from "./AboutCards";
 import type { CardsHandle } from "./AboutCards";
+import { AboutArc } from "./AboutArc";
+import type { ArcHandle } from "./AboutArc";
 import { usePrefersReducedMotion } from "../../hooks/usePrefersReducedMotion";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useIsTouch } from "../../hooks/useIsTouch";
@@ -27,6 +29,7 @@ export default function AboutSection() {
   const wrapper = useRef<HTMLElement>(null);
   const intro = useRef<HTMLDivElement>(null);
   const cards = useRef<CardsHandle>(null);
+  const arc = useRef<ArcHandle>(null);
 
   const reduceMotion = usePrefersReducedMotion();
   // impilato (modello sopra, testo sotto): telefoni E tablet in portrait —
@@ -64,6 +67,7 @@ export default function AboutSection() {
       const el = intro.current;
       if (el) applyDomPose(el, computeIntroPose(p, _introPose));
       cards.current?.apply(p);
+      arc.current?.apply(p);
     },
     [reduceMotion],
   );
@@ -144,6 +148,13 @@ export default function AboutSection() {
             bottiglia, che resta il fulcro */}
         <AboutCards
           ref={cards}
+          breakpoint={breakpoint}
+          reduceMotion={reduceMotion}
+        />
+
+        {/* culmine tipografico: davanti al canvas, ma alto sopra il collo */}
+        <AboutArc
+          ref={arc}
           breakpoint={breakpoint}
           reduceMotion={reduceMotion}
         />

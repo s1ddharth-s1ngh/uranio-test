@@ -217,8 +217,19 @@ export interface AboutConfig {
     /** rotazione (gradi) da inizio a fine corsa, contro-tangente all'arco */
     tiltAmp: number;
   };
-  /** semiassi dell'arco della headline, in frazioni di viewport */
-  arc: { rx: number; ry: number; cy: number; fontVw: number };
+  /**
+   * Arco della headline finale. `rx` in frazioni di larghezza, `ry` e `cy` in
+   * frazioni di altezza, misurate dal bordo alto. `spread` è l'ampiezza
+   * angolare usata dell'ellisse in gradi (180 = semicerchio pieno): più
+   * stretta, meno le lettere agli estremi si coricano.
+   */
+  arc: {
+    rx: number;
+    ry: number;
+    cy: number;
+    spread: number;
+    fontVw: number;
+  };
 }
 
 // I numeri nascono dai budget di movimento del brief e sono poi tarati sul
@@ -264,7 +275,7 @@ const DESKTOP: AboutConfig = {
   // quindi è il tappo a coprirle, e a quote più basse taglierebbe il testo in
   // due proprio mentre lo si legge (verificato con un test di sovrapposizione).
   cards: { enterX: 58, exitX: -58, apexY: -30, edgeY: -16, tiltAmp: 5 },
-  arc: { rx: 0.42, ry: 0.2, cy: 0.4, fontVw: 3.6 },
+  arc: { rx: 0.4, ry: 0.16, cy: 0.34, spread: 132, fontVw: 3.4 },
 };
 
 const TABLET: AboutConfig = {
@@ -287,7 +298,7 @@ const TABLET: AboutConfig = {
   contentYaw: 0.22,
   cardOverlap: 0.22,
   cards: { enterX: 64, exitX: -64, apexY: -29, edgeY: -15, tiltAmp: 4 },
-  arc: { rx: 0.44, ry: 0.19, cy: 0.4, fontVw: 5 },
+  arc: { rx: 0.42, ry: 0.15, cy: 0.33, spread: 126, fontVw: 4.6 },
 };
 
 const MOBILE: AboutConfig = {
@@ -323,7 +334,9 @@ const MOBILE: AboutConfig = {
   cardOverlap: 0.14,
   // arco più piatto e più centrale: di lato non c'è spazio, e la card è larga
   cards: { enterX: 78, exitX: -78, apexY: -25, edgeY: -13, tiltAmp: 3 },
-  arc: { rx: 0.46, ry: 0.17, cy: 0.42, fontVw: 8.5 },
+  // arco più largo e meno profondo: in portrait l'aspect ratio corica molto
+  // le lettere agli estremi, e con `spread` largo diventano illeggibili
+  arc: { rx: 0.47, ry: 0.13, cy: 0.3, spread: 100, fontVw: 7.6 },
 };
 
 export const CONFIG: Record<Breakpoint, AboutConfig> = {
@@ -820,6 +833,140 @@ export function computeCardPose(
   out.scale = 0.94 + 0.06 * smoothstep(clamp01(t / 0.3)) - 0.02 * smoothstep(clamp01((t - 0.6) / 0.4));
   // contro-tangente: ruota mentre attraversa, restando entro pochi gradi
   out.rot = tilt + c.tiltAmp * (2 * t - 1);
+  return out;
+}
+
+// --- HEADLINE SU ARCO ----------------------------------------------------
+
+export interface ArcSlot {
+  /** posizione in percentuale del contenitore */
+  left: number;
+  top: number;
+  /** rotazione tangente, in gradi */
+  rot: number;
+}
+
+export interface ArcLayout {
+  /** angolo di ogni lettera, già distribuito per lunghezza d'arco */
+  angles: number[];
+  /** lunghezza dell'arco in ALTEZZE di viewport (moltiplicare per innerHeight) */
+  length: number;
+}
+
+export function makeArcLayout(): ArcLayout {
+  return { angles: [], length: 0 };
+}
+
+const _cum: number[] = [];
+const ARC_STEPS = 400;
+
+/**
+ * Distribuisce `n` lettere sull'arco a passo costante di LUNGHEZZA, non di
+ * angolo.
+ *
+ * Su un'ellisse molto schiacciata — ed è il caso: rx è quasi mezza larghezza,
+ * ry un sesto di altezza — angoli uguali danno distanze diversissime: le
+ * lettere si ammucchiano agli estremi e si allargano in cima. Qui si integra
+ * la curva e si inverte, così il passo è regolare ovunque.
+ *
+ * Tutto viene misurato in proporzioni di PIXEL (x scalata per l'aspect ratio):
+ * rx è in frazioni di larghezza e ry di altezza, quindi senza quella
+ * correzione spaziatura e inclinazioni cambierebbero da schermo a schermo.
+ */
+export function arcLayout(
+  n: number,
+  cfg: AboutConfig,
+  aspect: number,
+  out: ArcLayout,
+): ArcLayout {
+  const { rx, ry, spread } = cfg.arc;
+  const half = (spread * Math.PI) / 360;
+  // -90° è la cima dell'ellisse; l'arco si apre simmetrico attorno a quella
+  const a0 = -Math.PI / 2 - half;
+  const a1 = -Math.PI / 2 + half;
+
+  _cum.length = ARC_STEPS + 1;
+  _cum[0] = 0;
+  let px = rx * Math.cos(a0) * aspect;
+  let py = ry * Math.sin(a0);
+  for (let k = 1; k <= ARC_STEPS; k++) {
+    const a = a0 + ((a1 - a0) * k) / ARC_STEPS;
+    const x = rx * Math.cos(a) * aspect;
+    const y = ry * Math.sin(a);
+    _cum[k] = _cum[k - 1] + Math.hypot(x - px, y - py);
+    px = x;
+    py = y;
+  }
+  const total = _cum[ARC_STEPS];
+  out.length = total;
+  out.angles.length = n;
+
+  for (let i = 0; i < n; i++) {
+    const target = n === 1 ? total / 2 : (i / (n - 1)) * total;
+    let k = 1;
+    while (k < ARC_STEPS && _cum[k] < target) k++;
+    const l0 = _cum[k - 1];
+    const l1 = _cum[k];
+    const f = l1 > l0 ? (target - l0) / (l1 - l0) : 0;
+    out.angles[i] = a0 + ((a1 - a0) * (k - 1 + f)) / ARC_STEPS;
+  }
+  return out;
+}
+
+/** posizione e tangente della lettera a un dato angolo dell'ellisse */
+export function arcSlot(
+  a: number,
+  cfg: AboutConfig,
+  aspect: number,
+  out: ArcSlot,
+): ArcSlot {
+  const { rx, ry, cy } = cfg.arc;
+  out.left = (0.5 + rx * Math.cos(a)) * 100;
+  out.top = (cy + ry * Math.sin(a)) * 100;
+  // derivata dell'ellisse, riportata in proporzioni di pixel
+  const dx = -rx * Math.sin(a) * aspect;
+  const dy = ry * Math.cos(a);
+  out.rot = clampAbs((Math.atan2(dy, dx) * 180) / Math.PI, ARC_MAX_ROT);
+  return out;
+}
+
+/**
+ * Larghezza media di un carattere maiuscolo rispetto al corpo, per Inter.
+ * Serve a far entrare la frase nell'arco: sopra questa densità le lettere si
+ * toccherebbero.
+ */
+export const ARC_ADVANCE = 0.62;
+
+/**
+ * Inclinazione massima di una lettera sull'arco. Le lettere seguono la
+ * tangente "quanto basta": oltre questa soglia, sugli schermi in portrait —
+ * dove l'aspect ratio corica molto gli estremi — la frase smette di leggersi.
+ */
+export const ARC_MAX_ROT = 38;
+
+/**
+ * Entrata della headline: il gruppo scivola da destra e ogni lettera si
+ * accende in ritardo sulla precedente. Esce prima che il tappo cominci a
+ * rientrare, così il palco è libero per il riaggancio.
+ */
+export function computeArcLetterPose(
+  p: number,
+  i: number,
+  n: number,
+  out: DomPose,
+): DomPose {
+  const t = phase(p, PHASES.headline);
+  // sfasamento per lettera: l'ultima parte quando la prima è a 70% di corsa
+  const delay = n > 1 ? (i / (n - 1)) * 0.3 : 0;
+  const enter = easeOutCubic(clamp01((t / 0.42 - delay) / 0.7));
+  // uscita: comincia dentro la fase di ritorno del tappo
+  const exit = easeInCubic(clamp01((t - 0.8) / 0.2));
+
+  out.opacity = enter * (1 - exit);
+  out.x = (1 - enter) * 7 - exit * 4;
+  out.y = 0;
+  out.rot = 0;
+  out.scale = 0.9 + enter * 0.1;
   return out;
 }
 
