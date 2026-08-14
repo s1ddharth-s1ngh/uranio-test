@@ -322,6 +322,12 @@ export function AboutBottle({
       aboutDebug.recoilY = recoilY;
       aboutDebug.idleWeight = iw;
       aboutDebug.pointerWeight = pw;
+      // i tre pesi del tappo: sono questi che si guardano quando la
+      // coreografia "non torna" (vedi README.md in questa cartella)
+      aboutDebug.capOpen = _capPose.openness;
+      aboutDebug.capOrient = _capPose.orient;
+      aboutDebug.capPlay = _capPose.play;
+      aboutDebug.capSpinTurns = _capPose.spin / (Math.PI * 2);
     }
   });
 

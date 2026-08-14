@@ -392,9 +392,11 @@ export function computeFraming(
 
   // ingresso: parte un filo più in basso e sale in posa. Reversibile, e toglie
   // il "compare dal nulla" quando la sezione entra in viewport.
+  // 5%: a 7% il taglio iniziale arrivava al 57%, fuori dalla forbice 45-55%
+  // in cui la composizione si legge come "metà bottiglia"
   const entryDip = reduceMotion
     ? 0
-    : (1 - easeInOutCubic(phase(p, PHASES.entry))) * bottleH * 0.07;
+    : (1 - easeInOutCubic(phase(p, PHASES.entry))) * bottleH * 0.05;
 
   return {
     scale,
