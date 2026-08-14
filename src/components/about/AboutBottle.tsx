@@ -33,6 +33,13 @@ function kf(p: number, stops: [number, number][]): number {
 
 const clamp = (v: number, lim: number) => Math.max(-lim, Math.min(lim, v));
 
+// Scratch riusati a ogni frame: allocare Vector3/Quaternion/Matrix4 dentro
+// useFrame vuol dire regalare lavoro al garbage collector 60 volte al secondo.
+const _m = new THREE.Matrix4();
+const _pos = new THREE.Vector3();
+const _quat = new THREE.Quaternion();
+const _scale = new THREE.Vector3();
+
 // Registro di debug (solo dev) per test e taratura: window.__aboutDebug
 const aboutDebug: Record<string, number> = {};
 if (import.meta.env.DEV && typeof window !== "undefined") {
@@ -57,18 +64,47 @@ export function AboutBottle({
   const capGltf = useGLTF(CAP_URL);
 
   // Bottiglia raddrizzata + tappo calzato sulla bocca, centrati sull'origine e
-  // alti 2 unità (deve girare attorno al baricentro). Il tappo resta un gruppo
-  // a sé, ritrovabile con getObjectByName("cap"): è quello che poi salterà via.
-  const model = useMemo(
-    () => buildBottleAssembly(bottleGltf.scene, capGltf.scene).holder,
+  // alti 2 unità (deve girare attorno al baricentro). Il tappo è un oggetto a
+  // sé, FUORI dall'assieme: dentro resta solo `capAnchor`, il segnaposto della
+  // posa chiusa che eredita ogni movimento della bottiglia.
+  const asm = useMemo(
+    () => buildBottleAssembly(bottleGltf.scene, capGltf.scene),
     [bottleGltf.scene, capGltf.scene],
   );
 
+  const layoutRig = useRef<THREE.Group>(null);
+  const capWorldRig = useRef<THREE.Group>(null);
+  const capScaleNode = useRef<THREE.Group>(null);
   const group = useRef<THREE.Group>(null);
   const smooth = useRef(0);
   const tiltX = useRef(0);
   const tiltY = useRef(0);
   const { pointer } = useThree();
+
+  /**
+   * Rimette il tappo esattamente sull'anchor. Lavora sulle MATRICI MONDO e non
+   * su valori copiati a mano: qualunque cosa faccia la bottiglia (rotazione,
+   * traslazione, scala del layout), il tappo la eredita senza accumulare
+   * errore. È idempotente, quindi si può chiamare a ogni frame e a qualsiasi
+   * progresso — nessun `attach`, nessun cambio di gerarchia, nessun callback.
+   */
+  const followAnchor = () => {
+    const root = layoutRig.current;
+    const rig = capWorldRig.current;
+    const scaleNode = capScaleNode.current;
+    if (!root || !rig || !scaleNode) return;
+    // le matrici della bottiglia sono state appena scritte: vanno ricalcolate
+    // ORA, o il tappo inseguirebbe la posa del frame precedente
+    root.updateMatrixWorld(true);
+    _m
+      .copy(root.matrixWorld)
+      .invert()
+      .multiply(asm.capAnchor.matrixWorld)
+      .decompose(_pos, _quat, _scale);
+    rig.position.copy(_pos);
+    rig.quaternion.copy(_quat);
+    scaleNode.scale.copy(_scale);
+  };
 
   useFrame((state, delta) => {
     const g = group.current;
@@ -81,6 +117,7 @@ export function AboutBottle({
       g.position.set(narrow ? 0 : -1.3, narrow ? 0.95 : 0, 0);
       g.scale.setScalar(narrow ? 0.6 : 1.2);
       g.rotation.set(0, 0, 0);
+      followAnchor();
       return;
     }
 
@@ -130,6 +167,7 @@ export function AboutBottle({
     g.position.set(x, y, 0);
     g.scale.setScalar(sc);
     g.rotation.set(tiltX.current, ry + tiltY.current, 0);
+    followAnchor();
 
     if (import.meta.env.DEV) {
       aboutDebug.p = p;
@@ -142,9 +180,19 @@ export function AboutBottle({
     }
   });
 
+  // Il rig del tappo è FRATELLO di quello della bottiglia, non figlio: così
+  // durante la fase aperta non eredita scroll, idle e parallasse del corpo.
+  // Quando è agganciato ci pensa followAnchor() a rimetterlo esattamente lì.
   return (
-    <group ref={group}>
-      <primitive object={model} />
+    <group ref={layoutRig}>
+      <group ref={group}>
+        <primitive object={asm.holder} />
+      </group>
+      <group ref={capWorldRig}>
+        <group ref={capScaleNode}>
+          <primitive object={asm.capModel} />
+        </group>
+      </group>
     </group>
   );
 }

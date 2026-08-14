@@ -97,8 +97,20 @@ function measureCapBore(cap: THREE.Object3D): number {
 export interface BottleAssembly {
   /** da dare a <primitive>: assieme centrato sull'origine e alto TARGET_HEIGHT */
   holder: THREE.Group;
-  /** il tappo, già in posa sul collo — il gruppo da animare quando salterà via */
-  cap: THREE.Group;
+  /**
+   * Segnaposto vuoto DENTRO l'assieme, nella posa esatta del tappo chiuso:
+   * eredita quindi ogni trasformazione della bottiglia (scroll, idle, mouse).
+   * È la verità a cui il rig del tappo si riaggancia — copiandone la matrice
+   * mondo il tappo torna indistinguibile da un tappo nativo, senza drift.
+   */
+  capAnchor: THREE.Object3D;
+  /**
+   * Il tappo, FUORI dall'assieme e senza trasformazioni proprie: lo monta il
+   * chiamante in un rig a parte, così durante la fase aperta non eredita più
+   * i movimenti della bottiglia. La sua origine locale è il centro del bordo
+   * inferiore della gonna (il punto attorno a cui ha senso farlo ruotare).
+   */
+  capModel: THREE.Group;
   /**
    * misure utili ai test e alla taratura, nelle unità del modello (quelle
    * PRIMA della normalizzazione): moltiplica per `scale` per averle in unità
@@ -111,6 +123,21 @@ export interface BottleAssembly {
     capScale: number;
     capHeight: number;
     scale: number;
+  };
+  /**
+   * Le stesse misure già in unità dell'HOLDER (assieme alto TARGET_HEIGHT).
+   * Sono quelle che serve leggere a runtime: la coreografia esprime gli
+   * offset in "altezze di bottiglia" e li moltiplica per questi valori, così
+   * resta identica anche se un domani il GLB cambia.
+   */
+  world: {
+    bottleHeight: number;
+    bottleWidth: number;
+    capHeight: number;
+    capRadius: number;
+    mouthRadius: number;
+    /** scala che il rig del tappo deve applicare al modello grezzo */
+    capScale: number;
   };
 }
 
@@ -185,7 +212,10 @@ export function buildBottleAssembly(
   cap.position.set(mouth.x, mouth.y - capHeight * capScale * CAP_SINK, mouth.z);
   assembly.updateMatrixWorld(true);
 
-  // --- normalizzazione: assieme centrato sull'origine e alto TARGET_HEIGHT
+  // --- normalizzazione: assieme centrato sull'origine e alto TARGET_HEIGHT.
+  // La bbox si misura con il tappo ANCORA montato: è lui a definire il punto
+  // più alto dell'assieme (cupola sopra il labbro). Smontarlo prima cambierebbe
+  // altezza e baricentro, e con essi tutta la taratura della sezione.
   const aBox = new THREE.Box3().setFromObject(assembly, true);
   const aCenter = aBox.getCenter(new THREE.Vector3());
   const aHeight = aBox.max.y - aBox.min.y;
@@ -198,9 +228,31 @@ export function buildBottleAssembly(
   holder.rotation.y = BOTTLE_ROLL;
   holder.updateMatrixWorld(true);
 
+  // --- misure in unità dell'holder, prese PRIMA di smontare il tappo
+  const bottleBox = new THREE.Box3().setFromObject(bottle, true);
+  const capBox = new THREE.Box3().setFromObject(cap, true);
+
+  // --- separazione: al posto del tappo resta un segnaposto vuoto con la sua
+  // identica trasformazione. Il modello esce dall'assieme e viene montato dal
+  // chiamante in un rig indipendente. Da qui in poi bottiglia e tappo sono due
+  // oggetti distinti anche nella scena, non solo concettualmente.
+  const capAnchor = new THREE.Object3D();
+  capAnchor.name = "capAnchor";
+  capAnchor.position.copy(cap.position);
+  capAnchor.quaternion.copy(cap.quaternion);
+  capAnchor.scale.copy(cap.scale);
+  assembly.remove(cap);
+  assembly.add(capAnchor);
+
+  const capModel = new THREE.Group();
+  capModel.name = "capModel";
+  capModel.add(capInner); // capInner ha già il pivot sul bordo della gonna
+  holder.updateMatrixWorld(true);
+
   return {
     holder,
-    cap,
+    capAnchor,
+    capModel,
     metrics: {
       height: aHeight,
       mouthY: mouth.y,
@@ -208,6 +260,21 @@ export function buildBottleAssembly(
       capScale,
       capHeight: capHeight * capScale,
       scale,
+    },
+    // NB: bottleBox/capBox sono già misurate DOPO updateMatrixWorld, quindi la
+    // scala dell'holder è dentro — non va rimoltiplicata. `mouth.radius` e
+    // `capScale` invece vengono da prima della normalizzazione: quelli sì.
+    world: {
+      bottleHeight: bottleBox.max.y - bottleBox.min.y,
+      bottleWidth: Math.max(
+        bottleBox.max.x - bottleBox.min.x,
+        bottleBox.max.z - bottleBox.min.z,
+      ),
+      capHeight: capBox.max.y - capBox.min.y,
+      capRadius:
+        Math.max(capBox.max.x - capBox.min.x, capBox.max.z - capBox.min.z) / 2,
+      mouthRadius: mouth.radius * scale,
+      capScale: capScale * scale,
     },
   };
 }
