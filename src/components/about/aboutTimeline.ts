@@ -198,8 +198,25 @@ export interface AboutConfig {
   capPointer: { shift: number; tilt: number };
   /** rotazione narrativa della bottiglia durante le card (rad, totale) */
   contentYaw: number;
-  /** card visibili contemporaneamente (governa la sovrapposizione) */
+  /**
+   * Quanto la finestra di una card sconfina in quella della successiva.
+   * 0.34 = su desktop se ne vedono due insieme, una principale e una in
+   * ingresso/uscita. 0 = una alla volta (mobile).
+   */
   cardOverlap: number;
+  /**
+   * Arco delle card, in unità di viewport (vw per x, vh per y) misurate dal
+   * CENTRO. y negativa = verso l'alto. L'arco passa sopra il collo della
+   * bottiglia e sopra il tappo in hovering: è quella la fascia libera.
+   */
+  cards: {
+    enterX: number;
+    exitX: number;
+    apexY: number;
+    edgeY: number;
+    /** rotazione (gradi) da inizio a fine corsa, contro-tangente all'arco */
+    tiltAmp: number;
+  };
   /** semiassi dell'arco della headline, in frazioni di viewport */
   arc: { rx: number; ry: number; cy: number; fontVw: number };
 }
@@ -238,6 +255,7 @@ const DESKTOP: AboutConfig = {
   capPointer: { shift: 0.075, tilt: 0.16 },
   contentYaw: 0.28,
   cardOverlap: 0.34,
+  cards: { enterX: 58, exitX: -58, apexY: -26, edgeY: -12, tiltAmp: 5 },
   arc: { rx: 0.42, ry: 0.2, cy: 0.4, fontVw: 3.6 },
 };
 
@@ -260,6 +278,7 @@ const TABLET: AboutConfig = {
   capPointer: { shift: 0.055, tilt: 0.13 },
   contentYaw: 0.22,
   cardOverlap: 0.22,
+  cards: { enterX: 64, exitX: -64, apexY: -24, edgeY: -10, tiltAmp: 4 },
   arc: { rx: 0.44, ry: 0.19, cy: 0.4, fontVw: 5 },
 };
 
@@ -288,6 +307,8 @@ const MOBILE: AboutConfig = {
   capPointer: { shift: 0, tilt: 0 },
   contentYaw: 0.16,
   cardOverlap: 0, // una card alla volta
+  // arco più piatto e più centrale: di lato non c'è spazio, e la card è larga
+  cards: { enterX: 78, exitX: -78, apexY: -21, edgeY: -9, tiltAmp: 3 },
   arc: { rx: 0.46, ry: 0.17, cy: 0.42, fontVw: 8.5 },
 };
 
@@ -588,6 +609,75 @@ export function computeIntroPose(p: number, out: DomPose): DomPose {
   out.y = (1 - enter) * 3.2 - exit * 2.4;
   out.rot = -exit * 3.5;
   out.scale = 0.98 + enter * 0.02 - exit * 0.03;
+  return out;
+}
+
+/**
+ * Finestra di progresso della card `i`.
+ *
+ * Le finestre sono lunghe `stride * (1 + overlap)` e distanziate di `stride`:
+ * con overlap 0 si susseguono senza toccarsi (una alla volta, mobile), con
+ * overlap > 0 la coda di una copre la testa della successiva, così non c'è mai
+ * un istante di palco vuoto. Lo `stride` è scelto perché l'ultima card finisca
+ * ESATTAMENTE alla fine della fase contenuti, qualunque sia il numero di card.
+ */
+export function cardWindow(i: number, count: number, cfg: AboutConfig): Span {
+  const span = PHASES.content.e - PHASES.content.s;
+  const stride = span / (count + cfg.cardOverlap);
+  const s = PHASES.content.s + i * stride;
+  return { s, e: s + stride * (1 + cfg.cardOverlap) };
+}
+
+const _cp1: [number, number, number] = [0, 0, 0];
+const _cp2: [number, number, number] = [0, 0, 0];
+const _cp3: [number, number, number] = [0, 0, 0];
+const _cp0: [number, number, number] = [0, 0, 0];
+const _cardXY: MutableVec3 = { x: 0, y: 0, z: 0 };
+
+/**
+ * Posa di una card lungo il suo arco: entra da destra, passa alta sopra il
+ * prodotto e esce a sinistra. Tutto in unità di viewport, quindi l'arco si
+ * adatta da solo a qualunque risoluzione senza numeri in pixel.
+ *
+ * `lane` sfalsa di poco la quota e `tilt` l'inclinazione a riposo: servono
+ * solo a togliere l'effetto "fila meccanica" tra una card e l'altra.
+ */
+export function computeCardPose(
+  p: number,
+  win: Span,
+  lane: number,
+  tilt: number,
+  cfg: AboutConfig,
+  out: DomPose,
+): DomPose {
+  const t = phase(p, win);
+  const c = cfg.cards;
+  const laneY = lane * 100;
+
+  // arco a campana: entra e esce basso, passa alto in mezzo
+  _cp0[0] = c.enterX;
+  _cp0[1] = c.edgeY + laneY;
+  _cp1[0] = c.enterX * 0.36;
+  _cp1[1] = c.apexY + laneY;
+  _cp2[0] = c.exitX * 0.36;
+  _cp2[1] = c.apexY + laneY;
+  _cp3[0] = c.exitX;
+  _cp3[1] = c.edgeY + laneY;
+  // il moto lungo la curva è addolcito agli estremi: entra e esce senza
+  // strappi, e in mezzo rallenta quanto basta a farsi leggere
+  bezier3(_cp0, _cp1, _cp2, _cp3, easeInOutSine(t), _cardXY);
+  out.x = _cardXY.x;
+  out.y = _cardXY.y;
+
+  // 0 → 1 → 1 → 0: piena per la parte centrale della corsa, così ogni
+  // messaggio ha una sosta in cui è davvero leggibile
+  out.opacity =
+    smoothstep(clamp01(t / 0.18)) * (1 - smoothstep(clamp01((t - 0.72) / 0.28)));
+  // profondità simulata: arriva un filo indietro, passa in primo piano, esce
+  // appena più piccola
+  out.scale = 0.94 + 0.06 * smoothstep(clamp01(t / 0.3)) - 0.02 * smoothstep(clamp01((t - 0.6) / 0.4));
+  // contro-tangente: ruota mentre attraversa, restando entro pochi gradi
+  out.rot = tilt + c.tiltAmp * (2 * t - 1);
   return out;
 }
 

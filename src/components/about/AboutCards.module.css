@@ -1,0 +1,140 @@
+/* Card informative che attraversano il palco da destra a sinistra.
+   Stanno in DOM (non in WebGL) per nitidezza del testo, accessibilità e
+   responsive: la traiettoria è solo un transform, il contenuto resta testo. */
+
+.list {
+  position: absolute;
+  inset: 0;
+  z-index: 2; /* DIETRO il canvas (z 5): le card passano dietro la bottiglia */
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  pointer-events: none;
+}
+
+/* Il <li> è solo un contenitore a tutto schermo che centra: il transform
+   della timeline va sul figlio, così rotazione e scala avvengono attorno al
+   CENTRO della card. Mettendo il centraggio nella stessa transform, la card
+   ruoterebbe attorno al proprio angolo. */
+.card {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+.inner {
+  width: min(34ch, 30vw);
+  padding: 1.6rem 1.8rem 1.7rem;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 1.1rem;
+  /* vetro scuro: si stacca dal fondo senza coprire la bottiglia */
+  background: rgb(12 12 16 / 0.62);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 1.6rem 4rem rgb(0 0 0 / 0.45);
+  text-align: left;
+  /* il compositing serve solo mentre la card è in corsa */
+  will-change: transform, opacity;
+  /* nascosta finché la timeline non la posiziona: senza questo, al primo
+     paint le card sarebbero tutte impilate al centro */
+  opacity: 0;
+}
+
+.index {
+  display: block;
+  margin-bottom: 0.7rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  color: var(--color-accent, #3ebedb);
+}
+
+.title {
+  margin: 0 0 0.6rem;
+  font-size: clamp(1.15rem, 1.5vw, 1.5rem);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+  color: var(--fg, #f2f2f2);
+}
+
+.body {
+  margin: 0;
+  font-size: clamp(0.92rem, 1.05vw, 1.02rem);
+  line-height: 1.55;
+  color: var(--fg-muted, #9c9c9c);
+}
+
+/* --- REDUCED MOTION ------------------------------------------------------
+   Nessuna corsa: le card diventano una griglia leggibile e ferma. Il
+   contenuto non deve MAI dipendere dall'animazione per essere raggiungibile. */
+.listStatic {
+  position: absolute;
+  inset: auto 0 5vh;
+  z-index: 6;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1rem;
+  padding: 0 6vw;
+}
+
+.listStatic .card {
+  position: static;
+  display: block;
+}
+
+.listStatic .inner {
+  width: auto;
+  opacity: 1;
+  transform: none;
+  will-change: auto;
+}
+
+/* tablet: card un po' più strette, l'arco è più contenuto */
+@media (max-width: 1279px) {
+  .inner {
+    width: min(32ch, 42vw);
+    padding: 1.35rem 1.5rem 1.45rem;
+  }
+}
+
+/* mobile: una card alla volta (cardOverlap 0 in CONFIG), più centrale e più
+   piccola — e larga quasi quanto lo schermo, perché di lato non c'è spazio */
+@media (max-width: 767px) {
+  .inner {
+    width: 78vw;
+    padding: 1.2rem 1.3rem 1.3rem;
+    border-radius: 0.9rem;
+  }
+
+  .title {
+    font-size: 1.12rem;
+  }
+
+  .body {
+    font-size: 0.94rem;
+    line-height: 1.45;
+  }
+}
+
+/* telefoni in landscape: poca altezza, la card deve restare bassa */
+@media (orientation: landscape) and (max-height: 500px) and (hover: none) {
+  .inner {
+    width: min(38ch, 52vw);
+    padding: 0.9rem 1.1rem 1rem;
+  }
+
+  .index {
+    margin-bottom: 0.4rem;
+  }
+
+  .title {
+    margin-bottom: 0.35rem;
+    font-size: 1rem;
+  }
+
+  .body {
+    font-size: 0.85rem;
+    line-height: 1.4;
+  }
+}

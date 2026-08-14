@@ -3,8 +3,9 @@ import { Canvas } from "@react-three/fiber";
 import { Environment, Lightformer } from "@react-three/drei";
 import { useInView } from "framer-motion";
 import { AboutBottle } from "./AboutBottle";
-import { AboutEye } from "./AboutEye";
 import { AboutStonks } from "./AboutStonks";
+import { AboutCards } from "./AboutCards";
+import type { CardsHandle } from "./AboutCards";
 import { usePrefersReducedMotion } from "../../hooks/usePrefersReducedMotion";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useIsTouch } from "../../hooks/useIsTouch";
@@ -25,6 +26,7 @@ const _introPose = makeDomPose();
 export default function AboutSection() {
   const wrapper = useRef<HTMLElement>(null);
   const intro = useRef<HTMLDivElement>(null);
+  const cards = useRef<CardsHandle>(null);
 
   const reduceMotion = usePrefersReducedMotion();
   // impilato (modello sopra, testo sotto): telefoni E tablet in portrait —
@@ -37,7 +39,7 @@ export default function AboutSection() {
   const smallScreen = useMediaQuery("(max-width: 1023px)");
   // Breakpoint della coreografia: governa pin distance, inquadratura, arco del
   // tappo e ampiezze (vedi CONFIG in aboutTimeline.ts). È separato da `narrow`,
-  // che riguarda solo l'impaginazione di stonks e occhio.
+  // che riguarda solo l'impaginazione degli stonks.
   const isPhone = useMediaQuery("(max-width: 767px)");
   const isTabletWidth = useMediaQuery(
     "(min-width: 768px) and (max-width: 1279px)",
@@ -47,7 +49,7 @@ export default function AboutSection() {
     : isTabletWidth || narrow
       ? "tablet"
       : "desktop";
-  // senza mouse l'occhio non ha un cursore da seguire → si muove da solo
+  // senza mouse non c'è un cursore da seguire: i modelli si muovono da soli
   const isTouch = useIsTouch();
   // pausa del rendering quando la sezione è fuori schermo (margine largo
   // così il canvas riparte un attimo prima di entrare in vista)
@@ -61,6 +63,7 @@ export default function AboutSection() {
       if (reduceMotion) return;
       const el = intro.current;
       if (el) applyDomPose(el, computeIntroPose(p, _introPose));
+      cards.current?.apply(p);
     },
     [reduceMotion],
   );
@@ -129,12 +132,6 @@ export default function AboutSection() {
                 reduceMotion={reduceMotion}
                 touch={isTouch}
               />
-              {/* occhio 3D fisso in basso a destra, segue il cursore */}
-              <AboutEye
-                reduceMotion={reduceMotion}
-                narrow={narrow}
-                touch={isTouch}
-              />
             </Suspense>
           </Canvas>
         </div>
@@ -143,8 +140,15 @@ export default function AboutSection() {
             anche senza WebGL e senza animazioni. */}
         <p className={styles.srOnly}>{ABOUT_CANVAS_LABEL}</p>
 
+        {/* dietro il canvas: attraversano lo schermo passando dietro la
+            bottiglia, che resta il fulcro */}
+        <AboutCards
+          ref={cards}
+          breakpoint={breakpoint}
+          reduceMotion={reduceMotion}
+        />
+
         <div ref={intro} className={styles.intro}>
-          <p className={styles.eyebrow}>{ABOUT_INTRO.eyebrow}</p>
           <h2 className={styles.title}>{ABOUT_INTRO.title}</h2>
           <p className={styles.subtitle}>{ABOUT_INTRO.subtitle}</p>
         </div>

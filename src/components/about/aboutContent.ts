@@ -2,8 +2,6 @@
 // mai contenere testo, così si riscrive il racconto senza toccare le curve.
 
 export const ABOUT_INTRO = {
-  /** occhiello sopra il titolo */
-  eyebrow: "Ginger beer",
   title: "Dentro Uranio",
   subtitle: "Quattro elementi, una reazione sola. Scorri e apri la bottiglia.",
 } as const;
@@ -69,4 +67,4 @@ export const ABOUT_HEADLINE = "ENERGIA CHE NON SI SPEGNE";
 
 /** alternativa testuale del canvas, che è puramente decorativo */
 export const ABOUT_CANVAS_LABEL =
-  "Bottiglia di ginger beer Uranio che si apre e si richiude durante lo scorrimento";
+  "Bottiglia Uranio che si apre e si richiude durante lo scorrimento";
