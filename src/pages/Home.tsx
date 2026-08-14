@@ -1,13 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useLocation } from "react-router-dom";
-import {
-  motion,
-  useInView,
-  useMotionValueEvent,
-  useScroll,
-  useTransform,
-} from "framer-motion";
+import { useInView } from "framer-motion";
 import Loader from "../components/Loader";
 import TopBar from "../components/TopBar";
 import InteractiveText from "../components/InteractiveText";
@@ -17,7 +11,7 @@ import HeroLock from "../components/ui/HeroLock";
 import { usePrefersReducedMotion } from "../hooks/usePrefersReducedMotion";
 import { useIsTouch } from "../hooks/useIsTouch";
 import { useHeroLock } from "../hooks/useHeroLock";
-import { ABOUT_FADE, HERO_FADE, HERO_OVERLAP } from "../lib/heroTransition";
+import { HERO_OVERLAP, transitionAt } from "../lib/heroTransition";
 import styles from "./Home.module.css";
 
 // Le scene WebGL (three + R3F) vivono in chunk separati: la home shell e
@@ -38,26 +32,55 @@ export default function Home() {
   const heroRef = useRef<HTMLElement>(null);
   const heroInView = useInView(heroRef, { margin: "200px 0px 200px 0px" });
 
-  // TRANSIZIONE HERO → "CHI SIAMO". Progresso 0..1 = quanta parte di una
-  // schermata è stata scrollata dentro l'hero (l'hero è alto 100svh, quindi
-  // 1 = una schermata piena). Tutto è funzione della posizione di scroll, non
-  // del verso: risalendo la transizione si riavvolge identica.
-  const { scrollYProgress: heroScroll } = useScroll({
-    target: heroRef,
-    offset: ["start start", "end start"],
-  });
-  const heroOpacity = useTransform(heroScroll, HERO_FADE, [1, 0]);
-  // svanito = trasparente ai click, se no la sua ultima striscia (invisibile,
-  // ma sopra per z-index) ruberebbe il puntatore al canvas della sezione 2
-  const heroEvents = useTransform(
-    heroScroll,
-    (v): CSSProperties["pointerEvents"] =>
-      v >= HERO_FADE[1] ? "none" : "auto",
-  );
-  const aboutOpacity = useTransform(heroScroll, ABOUT_FADE, [0, 1]);
-  useMotionValueEvent(heroScroll, "change", (v) => {
-    document.documentElement.dataset.heroP = v.toFixed(4);
-  });
+  // TRANSIZIONE HERO → "CHI SIAMO" (vedi lib/heroTransition.ts). Scritta a
+  // mano invece che con useScroll+useTransform di Framer: quelli si appoggiano
+  // a una misurazione dell'elemento fatta in un effect, e col doppio
+  // mount/unmount di StrictMode restavano agganciati a misure fantasma —
+  // le due sezioni svanivano insieme a metà pagina. Qui la sorgente è
+  // scrollY/innerHeight, letta al momento: niente stato, niente misure.
+  const aboutRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const hero = heroRef.current;
+    const about = aboutRef.current;
+    if (!hero || !about) return;
+    if (reduceMotion) {
+      hero.style.opacity = "";
+      hero.style.pointerEvents = "";
+      about.style.opacity = "";
+      return;
+    }
+
+    let raf = 0;
+    const apply = () => {
+      raf = 0;
+      const { hero: h, about: a } = transitionAt(
+        window.scrollY,
+        window.innerHeight,
+      );
+      hero.style.opacity = h.toFixed(4);
+      // svanito = trasparente ai click: la sua ultima striscia (invisibile ma
+      // sopra per z-index) ruberebbe il puntatore al canvas della sezione 2
+      hero.style.pointerEvents = h < 0.01 ? "none" : "auto";
+      about.style.opacity = a.toFixed(4);
+    };
+    // un frame per scroll: la lettura di scrollY è sempre quella corrente,
+    // quindi non si accumula ritardo nemmeno con lo scroll a raffica
+    const schedule = () => {
+      if (!raf) raf = requestAnimationFrame(apply);
+    };
+
+    apply();
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+      hero.style.opacity = "";
+      hero.style.pointerEvents = "";
+      about.style.opacity = "";
+    };
+  }, [reduceMotion]);
 
   // Senza hover il gesto del dito non può essere insieme scroll e interazione:
   // nella prima sezione lo scroll è bloccato e il dito pilota il logo 3D, si
@@ -99,15 +122,10 @@ export default function Home() {
       <main>
         {/* HERO: alta 100vh, ma ne consuma solo (1 - HERO_OVERLAP) di scroll:
             svanisce mentre la sezione sotto sale e prende posizione */}
-        <motion.section
+        <section
           ref={heroRef}
           id="hero"
           className={`${styles.hero} ${locked ? styles.heroLocked : ""}`}
-          style={
-            reduceMotion
-              ? undefined
-              : { opacity: heroOpacity, pointerEvents: heroEvents }
-          }
         >
           <div
             className={`${styles.scene} ${revealed ? styles.sceneRevealed : ""}`}
@@ -140,16 +158,16 @@ export default function Home() {
           {isTouch ? null : (
             <ScrollPill label={PILL_LABEL} revealed={revealed} />
           )}
-        </motion.section>
+        </section>
 
         {/* CHI SIAMO: scrollytelling con canvas pinnato. Sale di HERO_OVERLAP
             sotto l'hero, quindi si aggancia in cima prima che l'hero finisca;
             la dissolvenza in entrata evita che da fermi faccia capolino */}
-        <motion.div style={reduceMotion ? undefined : { opacity: aboutOpacity }}>
+        <div ref={aboutRef}>
           <Suspense fallback={null}>
             <AboutSection />
           </Suspense>
-        </motion.div>
+        </div>
       </main>
 
       {isTouch && (
