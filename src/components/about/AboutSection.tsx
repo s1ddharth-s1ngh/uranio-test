@@ -11,6 +11,7 @@ import {
 import { AboutBottle } from "./AboutBottle";
 import { AboutEye } from "./AboutEye";
 import { AboutStonks } from "./AboutStonks";
+import type { Breakpoint } from "./aboutTimeline";
 import { usePrefersReducedMotion } from "../../hooks/usePrefersReducedMotion";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useIsTouch } from "../../hooks/useIsTouch";
@@ -42,6 +43,18 @@ export default function AboutSection() {
   );
   // dpr ridotto su tutti gli schermi piccoli (anche telefoni in landscape)
   const smallScreen = useMediaQuery("(max-width: 1023px)");
+  // Breakpoint della coreografia 3D: governa pin distance, inquadratura,
+  // arco del tappo e ampiezze (vedi CONFIG in aboutTimeline.ts). È separato
+  // da `narrow`, che riguarda solo l'impaginazione di stonks e occhio.
+  const isPhone = useMediaQuery("(max-width: 767px)");
+  const isTabletWidth = useMediaQuery(
+    "(min-width: 768px) and (max-width: 1279px)",
+  );
+  const breakpoint: Breakpoint = isPhone
+    ? "mobile"
+    : isTabletWidth || narrow
+      ? "tablet"
+      : "desktop";
   // senza mouse l'occhio non ha un cursore da seguire → si muove da solo
   const isTouch = useIsTouch();
   // pausa del rendering quando la sezione è fuori schermo (margine largo
@@ -124,8 +137,8 @@ export default function AboutSection() {
               {/* bottiglia centrale che guida lo scrollytelling */}
               <AboutBottle
                 progress={progress}
+                breakpoint={breakpoint}
                 reduceMotion={reduceMotion}
-                narrow={narrow}
                 touch={isTouch}
               />
               {/* occhio 3D fisso in basso a destra, segue il cursore */}

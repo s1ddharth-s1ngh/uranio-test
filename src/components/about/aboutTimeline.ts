@@ -264,6 +264,64 @@ export const CONFIG: Record<Breakpoint, AboutConfig> = {
   mobile: MOBILE,
 };
 
+// --- INQUADRATURA --------------------------------------------------------
+
+/** le misure dell'assieme che servono a inquadrare (vedi bottleAssembly.world) */
+export interface FramingMetrics {
+  bottleHeight: number;
+  bottleCenterY: number;
+}
+
+export interface Framing {
+  /** scala da mettere sul layout rig */
+  scale: number;
+  /** y del layout rig */
+  y: number;
+  /** frazione dell'altezza bottiglia sotto il bordo inferiore (per i test) */
+  hidden: number;
+}
+
+/**
+ * Traduce "metà bottiglia nascosta e collo a quell'altezza" in scala e
+ * posizione del rig, partendo dalla bbox VERA e dall'altezza del viewport in
+ * unità mondo. Nessun pixel scritto a mano: regge qualsiasi aspect ratio, e
+ * il reveal finale è solo un'interpolazione tra due inquadrature.
+ *
+ * Funzione pura apposta: la stessa che gira nel componente si esegue in Node
+ * per verificare che il taglio sia davvero quello dichiarato.
+ */
+export function computeFraming(
+  p: number,
+  cfg: AboutConfig,
+  world: FramingMetrics,
+  viewportHeight: number,
+  reduceMotion = false,
+): Framing {
+  const { middle, final } = cfg.framing;
+  // il reveal finale è l'unica cosa che cambia l'inquadratura
+  const rev = reduceMotion ? 1 : easeInOutCubic(phase(p, PHASES.reveal));
+  const hidden = lerp(middle.hidden, final.hidden, rev);
+  const visibleRatio = lerp(middle.visibleRatio, final.visibleRatio, rev);
+
+  // la parte VISIBILE (1 - hidden) deve occupare visibleRatio del viewport
+  const scale = (visibleRatio * viewportHeight) / ((1 - hidden) * world.bottleHeight);
+  const bottleH = world.bottleHeight * scale;
+  // centro del CORPO tale che `hidden` della sua altezza stia sotto il bordo
+  const bodyCenterY = -viewportHeight / 2 + bottleH * (0.5 - hidden);
+
+  // ingresso: parte un filo più in basso e sale in posa. Reversibile, e toglie
+  // il "compare dal nulla" quando la sezione entra in viewport.
+  const entryDip = reduceMotion
+    ? 0
+    : (1 - easeInOutCubic(phase(p, PHASES.entry))) * bottleH * 0.07;
+
+  return {
+    scale,
+    y: bodyCenterY - world.bottleCenterY * scale - entryDip,
+    hidden,
+  };
+}
+
 // --- PESI DEGLI STRATI ADDITIVI -----------------------------------------
 // Idle e puntatore sono SEMPRE additivi rispetto alla posa narrativa (gruppi
 // figli separati). Qui si decide solo *quanto* pesano: durante l'apertura e il

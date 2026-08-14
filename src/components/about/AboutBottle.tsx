@@ -4,6 +4,17 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import { buildBottleAssembly } from "./bottleAssembly";
+import {
+  CONFIG,
+  PHASES,
+  clampAbs,
+  computeFraming,
+  dampFactor,
+  idleWeight,
+  keyframes,
+  pointerWeight,
+} from "./aboutTimeline";
+import type { Breakpoint } from "./aboutTimeline";
 
 // Bottiglia e tappo sono due modelli separati: li incastro io in un unico
 // oggetto (vedi bottleAssembly.ts) così sembra una bottiglia chiusa.
@@ -12,26 +23,11 @@ const CAP_URL = `${import.meta.env.BASE_URL}3d/old_antic_beer_bottle_cap.glb`;
 useGLTF.preload(BOTTLE_URL);
 useGLTF.preload(CAP_URL);
 
-const TAU = Math.PI * 2;
-
-// interpola su coppie [progresso, valore] ordinate, con easing smoothstep
-function kf(p: number, stops: [number, number][]): number {
-  if (p <= stops[0][0]) return stops[0][1];
-  const last = stops[stops.length - 1];
-  if (p >= last[0]) return last[1];
-  for (let i = 0; i < stops.length - 1; i++) {
-    const [p0, v0] = stops[i];
-    const [p1, v1] = stops[i + 1];
-    if (p >= p0 && p <= p1) {
-      const t = (p - p0) / (p1 - p0 || 1);
-      const e = t * t * (3 - 2 * t); // smoothstep
-      return v0 + (v1 - v0) * e;
-    }
-  }
-  return last[1];
+// Registro di debug (solo dev) per test e taratura: window.__aboutDebug
+const aboutDebug: Record<string, number> = {};
+if (import.meta.env.DEV && typeof window !== "undefined") {
+  (window as unknown as Record<string, unknown>).__aboutDebug = aboutDebug;
 }
-
-const clamp = (v: number, lim: number) => Math.max(-lim, Math.min(lim, v));
 
 // Scratch riusati a ogni frame: allocare Vector3/Quaternion/Matrix4 dentro
 // useFrame vuol dire regalare lavoro al garbage collector 60 volte al secondo.
@@ -40,46 +36,50 @@ const _pos = new THREE.Vector3();
 const _quat = new THREE.Quaternion();
 const _scale = new THREE.Vector3();
 
-// Registro di debug (solo dev) per test e taratura: window.__aboutDebug
-const aboutDebug: Record<string, number> = {};
-if (import.meta.env.DEV && typeof window !== "undefined") {
-  (window as unknown as Record<string, unknown>).__aboutDebug = aboutDebug;
-}
-
 interface AboutBottleProps {
   // progresso di scroll 0..1 della sezione, letto ogni frame
   progress: RefObject<number>;
+  breakpoint: Breakpoint;
   reduceMotion?: boolean;
-  narrow?: boolean; // layout mobile: impilato in verticale
-  touch?: boolean; // niente cursore da seguire: occhio in moto autonomo
+  touch?: boolean; // niente cursore da seguire: solo moto autonomo
 }
 
 export function AboutBottle({
   progress,
+  breakpoint,
   reduceMotion = false,
-  narrow = false,
   touch = false,
 }: AboutBottleProps) {
   const bottleGltf = useGLTF(BOTTLE_URL);
   const capGltf = useGLTF(CAP_URL);
 
   // Bottiglia raddrizzata + tappo calzato sulla bocca, centrati sull'origine e
-  // alti 2 unità (deve girare attorno al baricentro). Il tappo è un oggetto a
-  // sé, FUORI dall'assieme: dentro resta solo `capAnchor`, il segnaposto della
-  // posa chiusa che eredita ogni movimento della bottiglia.
+  // alti 2 unità. Il tappo è un oggetto a sé, FUORI dall'assieme: dentro resta
+  // solo `capAnchor`, il segnaposto della posa chiusa.
   const asm = useMemo(
     () => buildBottleAssembly(bottleGltf.scene, capGltf.scene),
     [bottleGltf.scene, capGltf.scene],
   );
 
-  const layoutRig = useRef<THREE.Group>(null);
+  // Un rig per responsabilità: così nessun oggetto ha due scrittori e la posa
+  // finale è la composizione delle matrici, non una somma di Euler fragile.
+  const layoutRig = useRef<THREE.Group>(null); // inquadratura + reveal finale
+  const scrollRig = useRef<THREE.Group>(null); // pose narrative da progresso
+  const idleRig = useRef<THREE.Group>(null); // respiro continuo
+  const pointerRig = useRef<THREE.Group>(null); // parallasse col cursore
   const capWorldRig = useRef<THREE.Group>(null);
   const capScaleNode = useRef<THREE.Group>(null);
-  const group = useRef<THREE.Group>(null);
+
   const smooth = useRef(0);
-  const tiltX = useRef(0);
-  const tiltY = useRef(0);
-  const { pointer } = useThree();
+  const primed = useRef(false);
+  // bersagli del puntatore, smorzati nel frame loop (mai in React state)
+  const pYaw = useRef(0);
+  const pPitch = useRef(0);
+  const pRoll = useRef(0);
+  const pShift = useRef(0);
+
+  const { pointer, viewport } = useThree();
+  const cfg = CONFIG[breakpoint];
 
   /**
    * Rimette il tappo esattamente sull'anchor. Lavora sulle MATRICI MONDO e non
@@ -106,87 +106,137 @@ export function AboutBottle({
     scaleNode.scale.copy(_scale);
   };
 
+  /** inquadratura: la matematica sta in computeFraming, qui solo l'applicazione */
+  const applyFraming = (p: number) => {
+    const rig = layoutRig.current;
+    if (!rig) return;
+    const f = computeFraming(p, cfg, asm.world, viewport.height, reduceMotion);
+    rig.scale.setScalar(f.scale);
+    rig.position.set(0, f.y, 0);
+  };
+
   useFrame((state, delta) => {
-    const g = group.current;
-    if (!g) return;
+    const scroll = scrollRig.current;
+    const idle = idleRig.current;
+    const ptr = pointerRig.current;
+    if (!scroll || !idle || !ptr) return;
     const dt = Math.min(delta, 0.05);
+    const W = asm.world;
 
     if (reduceMotion) {
-      // niente animazione da scroll: posa statica leggibile accanto al testo
-      // (narrow: stessa quota della fase centrale, sopra il testo impilato)
-      g.position.set(narrow ? 0 : -1.3, narrow ? 0.95 : 0, 0);
-      g.scale.setScalar(narrow ? 0.6 : 1.2);
-      g.rotation.set(0, 0, 0);
+      // niente scrollytelling: posa statica, bottiglia intera, tappo chiuso
+      applyFraming(1);
+      scroll.position.set(0, 0, 0);
+      scroll.rotation.set(0, 0, 0);
+      idle.position.set(0, 0, 0);
+      idle.rotation.set(0, 0, 0);
+      ptr.position.set(0, 0, 0);
+      ptr.rotation.set(0, 0, 0);
       followAnchor();
       return;
     }
 
-    // smoothing dello scroll indipendente dal framerate → fluido ma
-    // reattivo (≈0.1/frame a 60Hz: parte subito, senza ritardo percepibile)
-    const k = 1 - Math.exp(-6.5 * dt);
-    smooth.current += (progress.current - smooth.current) * k;
+    // Smoothing dello scroll indipendente dal framerate: fluido ma reattivo
+    // (≈0.1/frame a 60Hz). Al primo frame — e dopo un refresh a metà sezione —
+    // si aggancia secco, altrimenti si vedrebbe una spazzata da 0 al vero p.
+    if (!primed.current) {
+      smooth.current = progress.current;
+      primed.current = true;
+    } else {
+      smooth.current +=
+        (progress.current - smooth.current) * dampFactor(6.5, dt);
+    }
     const p = smooth.current;
+    const t = state.clock.elapsedTime;
 
-    // --- TIMELINE ---
-    // dead zone minima (0.02): reagisce appena scrolli. Fasi larghe
-    // (0.02→0.48 e 0.60→0.98) + sezione alta 480vh = giri lenti e smooth.
-    // desktop: centro grande → sinistra (poco: -1.3) restando grande (1.2)
-    // → sosta → ritorno al centro. mobile: sale/scende, il testo sta sotto
-    let x: number;
-    let y: number;
-    let sc: number;
-    if (narrow) {
-      // fase centrale: in alto e piccola — il testo (larghezza piena, fino a
-      // ~44vh dal basso) resta sotto il bordo inferiore della bottiglia
-      x = 0;
-      y = kf(p, [[0, -0.1], [0.02, -0.1], [0.48, 0.95], [0.6, 0.95], [0.98, -0.1], [1, -0.1]]);
-      sc = kf(p, [[0, 1.15], [0.02, 1.15], [0.48, 0.55], [0.6, 0.55], [0.98, 1.15], [1, 1.15]]);
-    } else {
-      x = kf(p, [[0, 0], [0.02, 0], [0.48, -1.3], [0.6, -1.3], [0.98, 0], [1, 0]]);
-      y = 0;
-      sc = kf(p, [[0, 1.7], [0.02, 1.7], [0.48, 1.2], [0.6, 1.2], [0.98, 1.7], [1, 1.7]]);
-    }
-    // due giri completi: 0→2π nella Transizione A, 2π→4π nella Transizione B
-    const ry = kf(p, [[0, 0], [0.02, 0], [0.48, TAU], [0.6, TAU], [0.98, TAU * 2], [1, TAU * 2]]);
+    applyFraming(p);
 
-    // --- PARALLASSE VERSO IL CURSORE (la bottiglia si inclina verso il
-    // puntatore — sottile, smorzata, clampata; più marcata quando è
-    // grande al centro) ---
-    const eyeAmp = kf(p, [[0, 1], [0.02, 0.95], [0.48, 0.45], [0.6, 0.45], [0.98, 1], [1, 1]]);
-    const k2 = 1 - Math.exp(-5 * dt);
-    if (touch) {
-      // touch: piccolo giro lento autonomo (ampiezze sotto i clamp desktop)
-      const t = state.clock.elapsedTime;
-      tiltY.current += (Math.sin(t * 0.4) * 0.16 * eyeAmp - tiltY.current) * k2;
-      tiltX.current += (Math.cos(t * 0.27) * 0.08 * eyeAmp - tiltX.current) * k2;
-    } else {
-      tiltY.current += (clamp(pointer.x * 0.28, 0.35) * eyeAmp - tiltY.current) * k2;
-      tiltX.current += (clamp(-pointer.y * 0.18, 0.25) * eyeAmp - tiltX.current) * k2;
-    }
+    // --- POSA NARRATIVA (deterministica dal solo progresso) ---------------
+    // Rotazione lenta durante le card: mostra il prodotto da angolazioni
+    // diverse senza mai portare l'etichetta fuori leggibilità.
+    const cy = cfg.contentYaw;
+    const mid = PHASES.content.s + (PHASES.content.e - PHASES.content.s) * 0.45;
+    const ry = keyframes(p, [
+      [0, 0],
+      [PHASES.content.s, -cy * 0.35],
+      [mid, cy * 0.5],
+      [PHASES.content.e, cy * 0.12],
+      [PHASES.returning.e, 0],
+      [1, 0],
+    ]);
 
-    g.position.set(x, y, 0);
-    g.scale.setScalar(sc);
-    g.rotation.set(tiltX.current, ry + tiltY.current, 0);
+    // Rinculo: si carica durante l'anticipazione (scende), scatta allo stacco
+    // del tappo e si riassesta. Sotto i 2° e sotto il 2% dell'altezza, come da
+    // budget di movimento: deve sentirsi, non vedersi.
+    const recoilY = keyframes(p, [
+      [PHASES.tension.s, 0],
+      [PHASES.tension.e, -0.012],
+      [PHASES.opening.s + 0.03, 0.016],
+      [PHASES.opening.e, 0],
+    ]);
+    const recoilRoll = keyframes(p, [
+      [PHASES.tension.s, 0],
+      [PHASES.tension.e, 0.008],
+      [PHASES.opening.s + 0.03, -0.021],
+      [PHASES.opening.e, 0],
+    ]);
+
+    scroll.position.set(0, recoilY * W.bottleHeight, 0);
+    scroll.rotation.set(0, ry, recoilRoll);
+
+    // --- RESPIRO CONTINUO (additivo, su un rig suo) -----------------------
+    // Frequenze volutamente incommensurabili: il ciclo completo non si
+    // riconosce nemmeno restando fermi venti secondi.
+    const iw = idleWeight(p);
+    idle.position.set(0, Math.sin(t * 0.47) * cfg.idle.bobY * W.bottleHeight * iw, 0);
+    idle.rotation.set(
+      Math.cos(t * 0.23 + 0.7) * cfg.idle.pitchX * iw,
+      Math.sin(t * 0.19 + 2.1) * cfg.idle.yawY * iw,
+      Math.sin(t * 0.31 + 1.3) * cfg.idle.rollZ * iw,
+    );
+
+    // --- PARALLASSE COL CURSORE (additiva, su un rig suo) -----------------
+    // Stesso damping esponenziale della prima sezione (λ=5): la bottiglia
+    // segue con inerzia, non incollata al puntatore.
+    const pw = touch ? 0 : pointerWeight(p);
+    const k = dampFactor(5, dt);
+    const px = clampAbs(pointer.x, 1);
+    const py = clampAbs(pointer.y, 1);
+    pYaw.current += (px * cfg.pointer.yaw * pw - pYaw.current) * k;
+    pPitch.current += (-py * cfg.pointer.pitch * pw - pPitch.current) * k;
+    pRoll.current += (px * cfg.pointer.roll * pw - pRoll.current) * k;
+    pShift.current +=
+      (px * cfg.pointer.shiftX * W.bottleHeight * pw - pShift.current) * k;
+
+    ptr.position.set(pShift.current, 0, 0);
+    ptr.rotation.set(pPitch.current, pYaw.current, pRoll.current);
+
+    // il tappo, per ora, resta incollato all'anchor: la coreografia del volo
+    // arriva nel passo successivo
     followAnchor();
 
     if (import.meta.env.DEV) {
       aboutDebug.p = p;
-      aboutDebug.x = x;
-      aboutDebug.y = y;
-      aboutDebug.scale = sc;
+      aboutDebug.scale = layoutRig.current?.scale.x ?? 0;
+      aboutDebug.layoutY = layoutRig.current?.position.y ?? 0;
       aboutDebug.ry = ry;
-      aboutDebug.tiltX = tiltX.current;
-      aboutDebug.tiltY = tiltY.current;
+      aboutDebug.recoilY = recoilY;
+      aboutDebug.idleWeight = iw;
+      aboutDebug.pointerWeight = pw;
     }
   });
 
   // Il rig del tappo è FRATELLO di quello della bottiglia, non figlio: così
-  // durante la fase aperta non eredita scroll, idle e parallasse del corpo.
+  // durante la fase aperta non eredita scroll, respiro e parallasse del corpo.
   // Quando è agganciato ci pensa followAnchor() a rimetterlo esattamente lì.
   return (
     <group ref={layoutRig}>
-      <group ref={group}>
-        <primitive object={asm.holder} />
+      <group ref={scrollRig}>
+        <group ref={idleRig}>
+          <group ref={pointerRig}>
+            <primitive object={asm.holder} />
+          </group>
+        </group>
       </group>
       <group ref={capWorldRig}>
         <group ref={capScaleNode}>

@@ -133,6 +133,13 @@ export interface BottleAssembly {
   world: {
     bottleHeight: number;
     bottleWidth: number;
+    /**
+     * y del centro della SOLA bottiglia nell'holder. Non è 0: l'assieme è
+     * centrato contando anche la cupola del tappo, quindi il corpo risulta
+     * spostato di un pelo. Serve per inquadrare "metà bottiglia nascosta"
+     * rispetto al corpo vero e non rispetto alla bbox dell'assieme.
+     */
+    bottleCenterY: number;
     capHeight: number;
     capRadius: number;
     mouthRadius: number;
@@ -270,6 +277,7 @@ export function buildBottleAssembly(
         bottleBox.max.x - bottleBox.min.x,
         bottleBox.max.z - bottleBox.min.z,
       ),
+      bottleCenterY: (bottleBox.max.y + bottleBox.min.y) / 2,
       capHeight: capBox.max.y - capBox.min.y,
       capRadius:
         Math.max(capBox.max.x - capBox.min.x, capBox.max.z - capBox.min.z) / 2,
