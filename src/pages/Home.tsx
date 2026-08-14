@@ -1,7 +1,13 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useLocation } from "react-router-dom";
-import { motion, useInView, useScroll, useTransform } from "framer-motion";
+import {
+  motion,
+  useInView,
+  useMotionValueEvent,
+  useScroll,
+  useTransform,
+} from "framer-motion";
 import Loader from "../components/Loader";
 import TopBar from "../components/TopBar";
 import InteractiveText from "../components/InteractiveText";
@@ -49,6 +55,9 @@ export default function Home() {
       v >= HERO_FADE[1] ? "none" : "auto",
   );
   const aboutOpacity = useTransform(heroScroll, ABOUT_FADE, [0, 1]);
+  useMotionValueEvent(heroScroll, "change", (v) => {
+    document.documentElement.dataset.heroP = v.toFixed(4);
+  });
 
   // Senza hover il gesto del dito non può essere insieme scroll e interazione:
   // nella prima sezione lo scroll è bloccato e il dito pilota il logo 3D, si

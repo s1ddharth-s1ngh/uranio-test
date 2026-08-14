@@ -8,10 +8,13 @@ import {
   CONFIG,
   PHASES,
   clampAbs,
+  computeCapPose,
   computeFraming,
   dampFactor,
   idleWeight,
   keyframes,
+  lerp,
+  makeCapPose,
   pointerWeight,
 } from "./aboutTimeline";
 import type { Breakpoint } from "./aboutTimeline";
@@ -32,9 +35,16 @@ if (import.meta.env.DEV && typeof window !== "undefined") {
 // Scratch riusati a ogni frame: allocare Vector3/Quaternion/Matrix4 dentro
 // useFrame vuol dire regalare lavoro al garbage collector 60 volte al secondo.
 const _m = new THREE.Matrix4();
+const _mInv = new THREE.Matrix4();
+const _mStable = new THREE.Matrix4();
 const _pos = new THREE.Vector3();
 const _quat = new THREE.Quaternion();
 const _scale = new THREE.Vector3();
+const _posStable = new THREE.Vector3();
+const _quatStable = new THREE.Quaternion();
+const _hoverQuat = new THREE.Quaternion();
+const _euler = new THREE.Euler();
+const _capPose = makeCapPose();
 
 interface AboutBottleProps {
   // progresso di scroll 0..1 della sezione, letto ogni frame
@@ -67,7 +77,9 @@ export function AboutBottle({
   const scrollRig = useRef<THREE.Group>(null); // pose narrative da progresso
   const idleRig = useRef<THREE.Group>(null); // respiro continuo
   const pointerRig = useRef<THREE.Group>(null); // parallasse col cursore
-  const capWorldRig = useRef<THREE.Group>(null);
+  const capWorldRig = useRef<THREE.Group>(null); // posa da curva / anchor
+  const capOffsetRig = useRef<THREE.Group>(null); // respiro e cursore del tappo
+  const capSpinRig = useRef<THREE.Group>(null); // giri interi sull'asse
   const capScaleNode = useRef<THREE.Group>(null);
 
   const smooth = useRef(0);
@@ -77,33 +89,119 @@ export function AboutBottle({
   const pPitch = useRef(0);
   const pRoll = useRef(0);
   const pShift = useRef(0);
+  // gli stessi bersagli, per il tappo staccato
+  const capPX = useRef(0);
+  const capPY = useRef(0);
+  const capRX = useRef(0);
+  const capRZ = useRef(0);
 
   const { pointer, viewport } = useThree();
   const cfg = CONFIG[breakpoint];
 
   /**
-   * Rimette il tappo esattamente sull'anchor. Lavora sulle MATRICI MONDO e non
-   * su valori copiati a mano: qualunque cosa faccia la bottiglia (rotazione,
-   * traslazione, scala del layout), il tappo la eredita senza accumulare
-   * errore. È idempotente, quindi si può chiamare a ogni frame e a qualsiasi
-   * progresso — nessun `attach`, nessun cambio di gerarchia, nessun callback.
+   * Posa del tappo. Lavora sulle MATRICI e non su valori copiati a mano:
+   * qualunque cosa faccia la bottiglia, l'aggancio la eredita senza accumulare
+   * errore. È idempotente e funzione del solo progresso — nessun `attach`,
+   * nessun cambio di gerarchia, nessun callback che uno scrub possa saltare.
+   *
+   * Due riferimenti per il collo:
+   *  • VIVO   = anchor com'è adesso, respiro e cursore compresi. A tappo
+   *             chiuso è questo, ed è ciò che rende l'aggancio esatto.
+   *  • STABILE = solo la posa narrativa, senza respiro né cursore. In hovering
+   *             è questo, così il tappo non oscilla in fase con la bottiglia.
+   * Si passa dall'uno all'altro con `openness`, quindi senza discontinuità.
    */
-  const followAnchor = () => {
+  const applyCapPose = (p: number, t: number, dt: number) => {
     const root = layoutRig.current;
+    const scroll = scrollRig.current;
     const rig = capWorldRig.current;
+    const offset = capOffsetRig.current;
+    const spin = capSpinRig.current;
     const scaleNode = capScaleNode.current;
-    if (!root || !rig || !scaleNode) return;
+    if (!root || !scroll || !rig || !offset || !spin || !scaleNode) return;
+
     // le matrici della bottiglia sono state appena scritte: vanno ricalcolate
     // ORA, o il tappo inseguirebbe la posa del frame precedente
     root.updateMatrixWorld(true);
-    _m
-      .copy(root.matrixWorld)
-      .invert()
-      .multiply(asm.capAnchor.matrixWorld)
-      .decompose(_pos, _quat, _scale);
-    rig.position.copy(_pos);
-    rig.quaternion.copy(_quat);
+    _mInv.copy(root.matrixWorld).invert();
+
+    // riferimento VIVO
+    _m.copy(_mInv).multiply(asm.capAnchor.matrixWorld).decompose(_pos, _quat, _scale);
     scaleNode.scale.copy(_scale);
+
+    const pose = reduceMotion
+      ? null
+      : computeCapPose(
+          p,
+          cfg,
+          asm.world.bottleHeight,
+          asm.world.capSinkDepth,
+          _capPose,
+        );
+
+    if (!pose || pose.openness <= 0) {
+      // agganciato: copia secca dell'anchor, offset e spin azzerati. È qui che
+      // "zero drift, zero gap, zero salto" smette di essere un'aspirazione.
+      rig.position.copy(_pos);
+      rig.quaternion.copy(_quat);
+      offset.position.set(0, 0, 0);
+      offset.rotation.set(0, 0, 0);
+      spin.rotation.y = 0;
+      return;
+    }
+
+    // riferimento STABILE: scrollRig × anchor, saltando respiro e cursore
+    _mStable
+      .multiplyMatrices(scroll.matrix, asm.capAnchorLocal)
+      .decompose(_posStable, _quatStable, _scale);
+
+    const o = pose.openness;
+    rig.position.set(
+      lerp(_pos.x, _posStable.x, o) + pose.offset.x,
+      lerp(_pos.y, _posStable.y, o) + pose.offset.y,
+      lerp(_pos.z, _posStable.z, o) + pose.offset.z,
+    );
+
+    // orientamento: slerp dall'anchor alla posa assoluta di hovering. A o=0
+    // vale esattamente l'anchor, quindi il riaggancio è esatto per costruzione.
+    // l'inclinazione usa `orient`, non `openness`: si spegne molto prima
+    // quando il tappo si riavvicina, o la gonna passerebbe dentro il vetro
+    const ow = pose.orient;
+    _euler.set(pose.tiltX, 0, pose.tiltZ);
+    _hoverQuat.setFromEuler(_euler);
+    rig.quaternion.slerpQuaternions(_quat, _hoverQuat, ow);
+    spin.rotation.y = pose.spin;
+
+    // --- offset additivi: vivi solo da staccato, si spengono da soli --------
+    // pesati anche loro da `orient`, per lo stesso motivo: a fine rientro il
+    // gioco radiale è di millesimi e non tollera né bob né cursore.
+    const W = asm.world;
+    // respiro del tappo: più mosso di quello del corpo e su altre frequenze,
+    // così i due non oscillano mai in fase
+    offset.position.set(
+      Math.sin(t * 0.61 + 1.9) * 0.010 * W.bottleHeight * ow + capPX.current,
+      Math.sin(t * 0.83 + 0.4) * 0.018 * W.bottleHeight * ow + capPY.current,
+      0,
+    );
+    // la deriva lenta sull'asse è un'oscillazione ampia e lentissima (~57 s di
+    // periodo): si legge come inerzia, non come un loop
+    offset.rotation.set(
+      Math.sin(t * 0.53) * 0.10 * ow + capRX.current,
+      Math.sin(t * 0.11) * 0.5 * ow,
+      Math.cos(t * 0.37 + 0.9) * 0.08 * ow + capRZ.current,
+    );
+
+    // risposta al cursore: più pronta della bottiglia (λ=7) ma sempre
+    // smorzata, e pesata da `orient` così in riaggancio si azzera da sola
+    const pw = touch ? 0 : ow;
+    const k = dampFactor(7, dt);
+    const px = clampAbs(pointer.x, 1);
+    const py = clampAbs(pointer.y, 1);
+    const shift = cfg.capPointer.shift * W.bottleWidth * pw;
+    capPX.current += (px * shift - capPX.current) * k;
+    capPY.current += (-py * shift * 0.7 - capPY.current) * k;
+    capRX.current += (-py * cfg.capPointer.tilt * pw - capRX.current) * k;
+    capRZ.current += (-px * cfg.capPointer.tilt * pw - capRZ.current) * k;
   };
 
   /** inquadratura: la matematica sta in computeFraming, qui solo l'applicazione */
@@ -132,7 +230,7 @@ export function AboutBottle({
       idle.rotation.set(0, 0, 0);
       ptr.position.set(0, 0, 0);
       ptr.rotation.set(0, 0, 0);
-      followAnchor();
+      applyCapPose(1, 0, dt);
       return;
     }
 
@@ -211,9 +309,7 @@ export function AboutBottle({
     ptr.position.set(pShift.current, 0, 0);
     ptr.rotation.set(pPitch.current, pYaw.current, pRoll.current);
 
-    // il tappo, per ora, resta incollato all'anchor: la coreografia del volo
-    // arriva nel passo successivo
-    followAnchor();
+    applyCapPose(p, t, dt);
 
     if (import.meta.env.DEV) {
       aboutDebug.p = p;
@@ -239,8 +335,12 @@ export function AboutBottle({
         </group>
       </group>
       <group ref={capWorldRig}>
-        <group ref={capScaleNode}>
-          <primitive object={asm.capModel} />
+        <group ref={capOffsetRig}>
+          <group ref={capSpinRig}>
+            <group ref={capScaleNode}>
+              <primitive object={asm.capModel} />
+            </group>
+          </group>
         </group>
       </group>
     </group>

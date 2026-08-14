@@ -112,6 +112,13 @@ export interface BottleAssembly {
    */
   capModel: THREE.Group;
   /**
+   * Matrice dell'anchor nel frame del GENITORE dell'holder, congelata alla
+   * costruzione. È costante (l'anchor non si muove dentro l'assieme) e serve a
+   * ricavare la posa del collo "senza respiro né cursore": in hovering il
+   * tappo si aggancia a quella, così non oscilla in fase con la bottiglia.
+   */
+  capAnchorLocal: THREE.Matrix4;
+  /**
    * misure utili ai test e alla taratura, nelle unità del modello (quelle
    * PRIMA della normalizzazione): moltiplica per `scale` per averle in unità
    * mondo.
@@ -143,6 +150,12 @@ export interface BottleAssembly {
     capHeight: number;
     capRadius: number;
     mouthRadius: number;
+    /**
+     * Quanto la gonna è calata SOTTO il labbro nella posa chiusa. Finché il
+     * tappo non ha risalito questa quota è ancora infilato nel collo, e il
+     * gioco radiale è di pochi millesimi: non può spostarsi di lato.
+     */
+    capSinkDepth: number;
     /** scala che il rig del tappo deve applicare al modello grezzo */
     capScale: number;
   };
@@ -256,10 +269,16 @@ export function buildBottleAssembly(
   capModel.add(capInner); // capInner ha già il pivot sul bordo della gonna
   holder.updateMatrixWorld(true);
 
+  // congelata ORA: `matrixWorld` viene riscritta a ogni frame dalla scena, e
+  // qui l'holder non ha ancora un genitore, quindi coincide con la matrice
+  // dell'anchor nel frame in cui verrà montato
+  const capAnchorLocal = capAnchor.matrixWorld.clone();
+
   return {
     holder,
     capAnchor,
     capModel,
+    capAnchorLocal,
     metrics: {
       height: aHeight,
       mouthY: mouth.y,
@@ -282,6 +301,7 @@ export function buildBottleAssembly(
       capRadius:
         Math.max(capBox.max.x - capBox.min.x, capBox.max.z - capBox.min.z) / 2,
       mouthRadius: mouth.radius * scale,
+      capSinkDepth: bottleBox.max.y - capBox.min.y,
       capScale: capScale * scale,
     },
   };

@@ -150,7 +150,15 @@ export interface BottleFraming {
   visibleRatio: number;
 }
 
+export const TAU = Math.PI * 2;
+
 export interface CapTrajectory {
+  /**
+   * Da che parte vola il tappo: -1 = sinistra, 1 = destra. Sta a SINISTRA
+   * perché le card attraversano da destra a sinistra, e da quel lato le
+   * incrocia solo a fine corsa, quando sono già quasi trasparenti.
+   */
+  side: -1 | 1;
   /**
    * Punti di controllo in offset dall'anchor, espressi in ALTEZZE DI
    * BOTTIGLIA (moltiplicati a runtime per l'altezza mondo corrente): così la
@@ -160,8 +168,18 @@ export interface CapTrajectory {
   lift: Vec3; // P1: stacco quasi verticale
   apex: Vec3; // P2: apice, inizio della deriva laterale
   hover: Vec3; // P3: posa di hovering
-  /** giri interi sull'asse del tappo durante l'apertura */
+  /**
+   * Curva del RITORNO: stessi estremi (anchor e hovering), pancia diversa —
+   * più bassa e diretta, così il rientro non è il rewind dell'apertura. Si può
+   * cambiare senza rischi: lo scambio tra le due curve avviene nel plateau in
+   * cui entrambe valgono esattamente `hover`.
+   */
+  returnLift: Vec3;
+  returnApex: Vec3;
+  /** giri sull'asse del tappo durante l'apertura */
   spinTurns: number;
+  /** giri aggiuntivi durante la fase delle card */
+  contentSpinTurns: number;
   /** inclinazione (rad) del tappo in hovering: mostra la cupola alla camera */
   hoverTiltX: number;
   hoverTiltZ: number;
@@ -197,13 +215,22 @@ const DESKTOP: AboutConfig = {
     final: { hidden: -0.04, visibleRatio: 0.82 },
   },
   cap: {
+    side: -1,
     // P1 quasi verticale: la corona deve sfilarsi dal collo PRIMA di derivare
     // di lato, altrimenti la gonna attraversa il vetro (vedi CAP_SINK).
     lift: [0.005, 0.1, 0.012],
-    apex: [0.12, 0.19, 0.045],
-    hover: [0.165, 0.075, 0.05],
+    apex: [0.12, 0.2, 0.045],
+    // la quota di hovering tiene conto dell'INCLINAZIONE: un disco largo
+    // quanto la corona, inclinato di ~27°, abbassa il proprio bordo di
+    // parecchio. A 0.075 il fondo sfiorava ancora la bocca.
+    hover: [0.165, 0.098, 0.05],
+    returnLift: [0.004, 0.055, 0.01],
+    returnApex: [0.09, 0.125, 0.03],
     spinTurns: 1.25,
-    hoverTiltX: -0.38,
+    contentSpinTurns: 0.35,
+    // +X inclina la cupola verso la camera (+Z): la faccia stampata resta
+    // leggibile per tutto il volo
+    hoverTiltX: 0.42,
     hoverTiltZ: 0.22,
   },
   idle: { bobY: 0.012, rollZ: 0.016, pitchX: 0.012, yawY: 0.022 },
@@ -225,8 +252,10 @@ const TABLET: AboutConfig = {
     ...DESKTOP.cap,
     // arco più contenuto: meno larghezza disponibile ai lati del collo
     lift: [0.004, 0.095, 0.01],
-    apex: [0.095, 0.175, 0.04],
-    hover: [0.13, 0.07, 0.042],
+    apex: [0.095, 0.195, 0.04],
+    hover: [0.13, 0.098, 0.042],
+    returnLift: [0.003, 0.05, 0.008],
+    returnApex: [0.07, 0.125, 0.025],
   },
   capPointer: { shift: 0.055, tilt: 0.13 },
   contentYaw: 0.22,
@@ -243,11 +272,15 @@ const MOBILE: AboutConfig = {
   },
   cap: {
     // traiettoria più verticale e compatta: di lato non c'è spazio
+    side: -1,
     lift: [0.003, 0.1, 0.008],
-    apex: [0.055, 0.185, 0.028],
-    hover: [0.085, 0.1, 0.032],
+    apex: [0.055, 0.2, 0.028],
+    hover: [0.085, 0.115, 0.032],
+    returnLift: [0.002, 0.055, 0.006],
+    returnApex: [0.04, 0.135, 0.02],
     spinTurns: 1.25,
-    hoverTiltX: -0.32,
+    contentSpinTurns: 0.35,
+    hoverTiltX: 0.36,
     hoverTiltZ: 0.16,
   },
   // niente puntatore su touch: restano solo idle e coreografia
@@ -364,6 +397,152 @@ export function capOpenness(p: number): number {
   if (p <= PHASES.returning.s) return 1;
   // ritorno: 1 → 0 lungo returning+reattach, con l'ultimo tratto piatto
   return 1 - easeInOutSine(phase(p, { s: PHASES.returning.s, e: PHASES.reattach.e }));
+}
+
+// --- COREOGRAFIA DEL TAPPO ----------------------------------------------
+
+export interface CapPose {
+  /** offset dalla posa dell'anchor, nelle unità del layout rig */
+  offset: MutableVec3;
+  /** 0 = incollato all'anchor, 1 = in hovering */
+  openness: number;
+  /**
+   * Peso dell'INCLINAZIONE, e di tutti gli strati additivi del tappo. Non
+   * coincide con `openness`: è la stessa curva elevata a potenza, quindi si
+   * spegne molto prima quando il tappo si riavvicina al collo.
+   *
+   * Serve perché a `openness` bassa il tappo è ancora infilato nella bocca (o
+   * appena sopra) e il gioco radiale è di pochi millesimi: con l'inclinazione
+   * ancora attiva la gonna passa dentro il vetro. Sganciare i due tempi è ciò
+   * che rende l'ultimo tratto del rientro pulito.
+   */
+  orient: number;
+  /** inclinazione assoluta verso cui interpolare (rad) */
+  tiltX: number;
+  tiltZ: number;
+  /** giri narrativi sull'asse del tappo (rad) */
+  spin: number;
+}
+
+export function makeCapPose(): CapPose {
+  return {
+    offset: { x: 0, y: 0, z: 0 },
+    openness: 0,
+    orient: 0,
+    tiltX: 0,
+    tiltZ: 0,
+    spin: 0,
+  };
+}
+
+const _p1: [number, number, number] = [0, 0, 0];
+const _p2: [number, number, number] = [0, 0, 0];
+const _p3: [number, number, number] = [0, 0, 0];
+const ORIGIN: Vec3 = [0, 0, 0];
+
+/**
+ * Posa completa del tappo a un dato progresso. Pura e senza allocazioni: la
+ * stessa funzione gira nel frame loop e nei test headless.
+ *
+ * Tutto è funzione del solo `p`. Non esiste uno stato "aperto/chiuso" da
+ * mantenere: a qualsiasi progresso, raggiunto in qualsiasi ordine e a
+ * qualsiasi velocità, la posa è ricostruibile — che è ciò che rende la
+ * sequenza reversibile e a prova di scrub.
+ *
+ * @param bottleHeight altezza della bottiglia nelle unità del layout rig:
+ *        gli offset sono espressi in altezze di bottiglia e vengono convertiti
+ *        qui, così la traiettoria è la stessa a ogni scala.
+ * @param sinkDepth quanto la gonna è calata sotto il labbro (stesse unità).
+ */
+export function computeCapPose(
+  p: number,
+  cfg: AboutConfig,
+  bottleHeight: number,
+  sinkDepth: number,
+  out: CapPose,
+): CapPose {
+  const c = cfg.cap;
+  const openness = capOpenness(p);
+  const H = bottleHeight;
+  const side = c.side;
+
+  // Quale delle due curve: si scambiano nel plateau dell'hovering, dove
+  // entrambe valgono esattamente `hover` — quindi lo scambio è invisibile.
+  const back = p > (PHASES.opening.e + PHASES.returning.s) / 2;
+  const P1 = back ? c.returnLift : c.lift;
+  const P2 = back ? c.returnApex : c.apex;
+  const P3 = c.hover;
+
+  // in unità del layout rig, con la lateralità dal lato giusto
+  _p1[0] = P1[0] * H * side;
+  _p1[1] = P1[1] * H;
+  _p1[2] = P1[2] * H;
+  _p2[0] = P2[0] * H * side;
+  _p2[1] = P2[1] * H;
+  _p2[2] = P2[2] * H;
+  _p3[0] = P3[0] * H * side;
+  _p3[1] = P3[1] * H;
+  _p3[2] = P3[2] * H;
+
+  bezier3(ORIGIN, _p1, _p2, _p3, openness, out.offset);
+
+  // --- ESTRAZIONE PRIMA DELLA DERIVA ------------------------------------
+  // Vincolo fisico, non estetico: una corona non può scorrere di lato finché
+  // è infilata nel collo. Il gioco radiale vero è la differenza tra il raggio
+  // INTERNO della gonna e quello della bocca — circa tre millesimi di unità,
+  // cioè niente. Taratura a mano dei punti di controllo qui non regge: basta
+  // ritoccare una curva e la gonna torna dentro il vetro.
+  //
+  // Quindi la lateralità viene azzerata finché il tappo non ha risalito
+  // l'affondo, e rientra con uno smoothstep nell'affondo successivo. Il
+  // risultato è anche più giusto da vedere: sale dritto, poi scarta.
+  const gate = smoothstep(clamp01((out.offset.y - sinkDepth) / (sinkDepth * 1.2)));
+  out.offset.x *= gate;
+  out.offset.z *= gate;
+
+  // --- ANTICIPAZIONE ----------------------------------------------------
+  // Prima dello stacco la corona carica: si solleva di un nulla e si inclina
+  // verso il lato in cui volerà. Vale ZERO ai bordi, quindi non sporca né la
+  // posa iniziale né quella finale.
+  const anticip = keyframes(p, [
+    [PHASES.tension.s, 0],
+    [PHASES.tension.e, 1],
+    [PHASES.opening.s + 0.02, 0],
+  ]);
+  // 0.6% dell'altezza: resta comunque infilata nel collo (l'affondo è 2.4%)
+  out.offset.y += anticip * 0.006 * H;
+
+  // --- ORIENTAMENTO -----------------------------------------------------
+  // In hovering è assoluto (il tappo è staccato: non deve più seguire il
+  // corpo). Chi applica la posa interpola via slerp da quello dell'anchor,
+  // così a openness 0 torna esattamente sul collo.
+  out.tiltX = c.hoverTiltX;
+  // l'inclinazione dell'anticipazione va dalla parte in cui volerà: telegrafa
+  // il movimento invece di farlo sembrare improvviso
+  out.tiltZ = c.hoverTiltZ * side + anticip * 0.04 * -side;
+
+  // --- SPIN -------------------------------------------------------------
+  // Separato dall'orientamento apposta: il tappo può fare giri interi e
+  // arrivare comunque allineato. Il totale è arrotondato per eccesso, così a
+  // fine riaggancio lo spin è un multiplo esatto di 2π — cioè l'identità.
+  const total = Math.ceil(c.spinTurns + c.contentSpinTurns);
+  out.spin =
+    keyframes(p, [
+      [PHASES.opening.s, 0],
+      [PHASES.opening.e, c.spinTurns],
+      [PHASES.content.e, c.spinTurns + c.contentSpinTurns],
+      [PHASES.reattach.e, total],
+      [1, total],
+    ]) *
+    TAU *
+    side;
+
+  out.openness = openness;
+  // esponente tarato sul gioco radiale reale (gonna 0.155 contro bocca 0.152):
+  // verificato headless che con 1.8 la penetrazione durante il rientro resta
+  // sotto quella della posa chiusa di progetto
+  out.orient = Math.pow(openness, 1.8);
+  return out;
 }
 
 // --- NOTA TECNICA --------------------------------------------------------
