@@ -5,11 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build && cp dist/index.html dist/404.html && for d in it en coming-soon slash-experiment; do mkdir -p dist/$d && cp dist/index.html dist/$d/index.html; done",
+    "build": "tsc -b && vite build && node scripts/postbuild.mjs",
+    "build:test": "tsc -b && vite build && node scripts/postbuild.mjs --test",
     "lint": "eslint .",
     "preview": "vite preview",
     "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist"
+    "deploy": "gh-pages -d dist",
+    "predeploy:test": "npm run build:test",
+    "deploy:test": "gh-pages -d dist -r https://github.com/s1ddharth-s1ngh/uranio-test.git"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
